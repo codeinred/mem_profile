@@ -22,7 +22,7 @@ test_plugin: build
         -fplugin=build/libmp_plugin.dylib \
         -Xclang=-add-plugin \
         --include=mp_hook_prelude/include/mp_hook_prelude.h \
-        -Xclang=print_fns -g -o build/file_with_plugin
+        -Xclang=mp_instrument_dtors -g -o build/file_with_plugin
     build/file_with_plugin
 
 ast_dump *args:
@@ -41,3 +41,6 @@ build_example: install
 
 run_example example: build_example
     examples/build/{{example}}
+
+clean:
+    rm -rf build install examples/build

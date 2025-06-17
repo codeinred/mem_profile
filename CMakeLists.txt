@@ -122,7 +122,7 @@ target_compile_options(
     INTERFACE
     -fplugin=$<TARGET_FILE:mp::mp_plugin>
     -Xclang=-add-plugin
-    -Xclang=print_fns
+    -Xclang=mp_instrument_dtors
     $<INSTALL_INTERFACE:--include=$<INSTALL_PREFIX>/include/mp_hook_prelude.h>
 )
 

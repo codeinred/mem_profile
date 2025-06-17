@@ -14,4 +14,4 @@
 #include <mp_ast/mp_plugin_action.h>
 
 static clang::FrontendPluginRegistry::Add<mp::mp_plugin_action>
-    X("print_fns", "print function names");
+    X("mp_instrument_dtors", "Instrument destructors to save information about the current object, captured during profiling");
