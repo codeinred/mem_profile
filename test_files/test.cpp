@@ -1,6 +1,8 @@
 
+#include <cstdio>
 extern "C" int puts(char const*);
 
+#include <mp_unwind/mp_unwind.h>
 
 struct Trivial {
     int arr[10];
@@ -11,6 +13,7 @@ struct Baz {
 
 namespace my_ns {
 
+    bool do_trace = true;
 struct Foo {
     int*   arr;
     size_t size;
@@ -26,8 +29,16 @@ struct Foo {
     }
 
     ~Foo() {
+        char buff[1024];
+        std::sprintf(buff, "Deleting array @ %p", arr);
+        puts(buff);
         delete[] arr;
+
         printf("Destroyed Foo\n");
+        if(do_trace) {
+            mp::mp_unwind_show_trace();
+            //do_trace = false;
+        }
     }
 };
 

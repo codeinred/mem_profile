@@ -13,6 +13,8 @@ test_plugin: build
     dsymutil build/libmp_plugin.dylib
     /opt/homebrew/opt/llvm/bin/clang++ \
         test_files/test.cpp -O3 \
+        build/libmp_unwind.a \
+        -Imp_unwind/include \
         -fplugin=build/libmp_plugin.dylib \
         -Xclang=-add-plugin \
         --include=mp_hook_prelude/include/mp_hook_prelude.h \

@@ -88,6 +88,15 @@ mp_add_library(
     COMPILE_OPTIONS --include=${CMAKE_CURRENT_SOURCE_DIR}/mp_hook_prelude/include/mp_hook_prelude.h
 )
 
+mp_add_library(
+    mp_unwind
+    STATIC
+    ROOT mp_unwind
+    DEPS
+        mp::mp_error
+        fmt::fmt
+        mp::mp_hook_prelude
+)
 
 add_executable(ast_printer tools/ast_printer.cpp)
 target_link_libraries(ast_printer mp_ast mp_fs fmt::fmt)
