@@ -2,14 +2,119 @@
 #include <mp_unwind/mp_unwind.h>
 
 #include <mp_core/colors.h>
-#include <mp_core/types.h>
+#include <mp_types/types.h>
 
 #include <libunwind.h>
 
 //#include <fmt/core.h>
+#include <bit>
 #include <cstdio>
+#include <fmt/format.h>
 #include <string>
+#include <string_view>
+
 namespace mp {
+
+namespace {
+std::string_view getErrorMessage(int errc) {
+    switch (errc) {
+    case UNW_ESUCCESS:     return "no error";
+    case UNW_EUNSPEC:      return "unspecified (general) error";
+    case UNW_ENOMEM:       return "out of memory";
+    case UNW_EBADREG:      return "bad register number";
+    case UNW_EREADONLYREG: return "attempt to write read-only register";
+    case UNW_ESTOPUNWIND:  return "stop unwinding";
+    case UNW_EINVALIDIP:   return "invalid IP";
+    case UNW_EBADFRAME:    return "bad frame";
+    case UNW_EINVAL:       return "unsupported operation or bad value";
+    case UNW_EBADVERSION:  return "unwind info has unsupported version";
+    case UNW_ENOINFO:      return "no unwind info found";
+    }
+    return "<unknown error code>";
+}
+
+struct CheckUnwindError {
+    char const* context;
+
+    int throw_if_bad(int errc) const {
+        if (errc < 0) {
+            throw std::runtime_error(
+                fmt::format("{}. {} (code={})", context, getErrorMessage(errc), errc));
+        }
+        return errc;
+    }
+};
+
+int operator|(int errc, CheckUnwindError e) { return e.throw_if_bad(errc); }
+
+CheckUnwindError check(char const* msg) { return CheckUnwindError{msg}; }
+} // namespace
+
+size_t mp_unwind(size_t max_frames, uintptr_t* ipp, uintptr_t* spp) {
+    unw_cursor_t  cursor;
+    unw_context_t uc;
+
+    unw_getcontext(&uc) | check("mp_unwind: Unable to get context");
+    unw_init_local(&cursor, &uc) | check("mp_unwind: Unable to initialize cursor.");
+
+    for (size_t i = 0; i < max_frames; i++) {
+        unw_get_reg(&cursor, UNW_REG_IP, ipp + i) | check("mp_unwind: Cannot read UNW_REG_IP");
+        unw_get_reg(&cursor, UNW_REG_SP, spp + i) | check("mp_unwind: Cannot read UNW_REG_SP");
+        int step_result = unw_step(&cursor) | check("mp_unwind: unable to step");
+        // We reached the final frame
+        if (step_result == 0) return i + 1;
+    }
+
+    return max_frames;
+}
+
+
+
+size_t mp_extract_events(size_t           max_events,
+                         event_info*      event_buffer,
+                         size_t           spp_count,
+                         const uintptr_t* spp) {
+    constexpr size_t _mp_frame_information_elem_count
+        = sizeof(_mp_frame_information) / sizeof(ull_t);
+
+    size_t event_i = 0;
+    for (int i = 0; i < spp_count - 1; i++) {
+        unw_word_t frame_end   = spp[i + 1];
+        unw_word_t frame_start = spp[i];
+
+        ull_t const* frame_start_ptr = (ull_t const*)frame_start;
+        ull_t const* frame_end_ptr   = (ull_t const*)frame_end;
+
+
+        int64_t search_limit
+            = (frame_end_ptr - frame_start_ptr) - _mp_frame_information_elem_count + 1;
+
+        int search_size = std::min(search_limit, int64_t(16));
+
+        for (int i = 0; i < search_size; i++) {
+            if (frame_start_ptr[i] == _mp_frame_tag) {
+                _mp_frame_information info;
+                __builtin_memcpy(&info, frame_start_ptr + i, sizeof(info));
+
+                bool check_good = (info.tag ^ info.call_count) == info.checksum;
+                if (check_good) {
+                    if (event_i == max_events) return event_i;
+
+                    event_buffer[event_i++] = {
+                        info.call_count,
+                        info.this_size,
+                        (uintptr_t)info.this_ptr,
+                        info.type_name,
+                    };
+                }
+                break;
+            }
+        }
+    }
+
+    return event_i;
+}
+
 
 void dump(u64 const* block, size_t size) {
     puts("Block:");
@@ -41,8 +146,8 @@ void mp_unwind_show_trace() {
     unw_word_t    ip, sp, offset;
     using namespace colors;
 
-    constexpr size_t _mp_frame_information_elem_count =
-        sizeof(_mp_frame_information) / sizeof(ull_t);
+    constexpr size_t _mp_frame_information_elem_count
+        = sizeof(_mp_frame_information) / sizeof(ull_t);
 
     unw_getcontext(&uc);
     unw_init_local(&cursor, &uc);
@@ -58,8 +163,8 @@ void mp_unwind_show_trace() {
         unw_get_reg(&cursor, UNW_REG_SP, &sp);
         ipp[count] = ip;
         spp[count] = sp;
-        bool has_name =
-            unw_get_proc_name(&cursor, function_name, sizeof(function_name), &offset) == 0;
+        bool has_name
+            = unw_get_proc_name(&cursor, function_name, sizeof(function_name), &offset) == 0;
         char const* name = has_name ? function_name : "???";
         names[count]     = name;
         count++;
@@ -72,16 +177,22 @@ void mp_unwind_show_trace() {
         auto const& name        = names[i];
 
         printf("%s%s%s\n", BG, name.c_str(), Re);
-        printf("├── " s_frame_start " %-16lu   " MP_COLOR_GRAY "# 0x%016lx\n" MP_COLOR_Re, frame_start, frame_start);
-        printf("├── " s_frame_end "   %-16lu   " MP_COLOR_GRAY "# 0x%016lx\n" MP_COLOR_Re, frame_end, frame_end);
-        printf("├── " s_frame_size "  %-16lu   " MP_COLOR_GRAY "# 0x%016lx\n" MP_COLOR_Re, frame_size, frame_size);
+        printf("├── " s_frame_start " %-16lu   " MP_COLOR_GRAY "# 0x%016lx\n" MP_COLOR_Re,
+               frame_start,
+               frame_start);
+        printf("├── " s_frame_end "   %-16lu   " MP_COLOR_GRAY "# 0x%016lx\n" MP_COLOR_Re,
+               frame_end,
+               frame_end);
+        printf("├── " s_frame_size "  %-16lu   " MP_COLOR_GRAY "# 0x%016lx\n" MP_COLOR_Re,
+               frame_size,
+               frame_size);
 
         ull_t const* frame_start_ptr = (ull_t const*)frame_start;
         ull_t const* frame_end_ptr   = (ull_t const*)frame_end;
 
 
-        int64_t search_limit =
-            (frame_end_ptr - frame_start_ptr) - _mp_frame_information_elem_count + 1;
+        int64_t search_limit
+            = (frame_end_ptr - frame_start_ptr) - _mp_frame_information_elem_count + 1;
 
         int search_size = std::min(search_limit, int64_t(16));
 
@@ -93,13 +204,15 @@ void mp_unwind_show_trace() {
 
                 bool check_good = (info.tag ^ info.call_count) == info.checksum;
                 if (check_good) {
-                    printf("└── " s_frame_info MP_COLOR_GRAY "  # (at stack[%d] in frame)\n" MP_COLOR_Re
-                           "    ├── " s_tag "        %llu\n"
+                    printf("└── " s_frame_info MP_COLOR_GRAY
+                           "  # (at stack[%d] in frame)\n" MP_COLOR_Re "    ├── " s_tag
+                           "        %llu\n"
                            "    ├── " s_call_count " %llu\n"
                            "    ├── " s_this_size "  %lu\n"
                            "    ├── " s_this_ptr "   %p\n"
                            "    ├── " s_type_name "  " MP_COLOR_BM "\"%s\"\n" MP_COLOR_Re
-                           "    └── " s_checksum "   %llu  " MP_COLOR_GRAY "# (checksum good)\n" MP_COLOR_Re,
+                           "    └── " s_checksum "   %llu  " MP_COLOR_GRAY
+                           "# (checksum good)\n" MP_COLOR_Re,
                            i,
                            info.tag,
                            info.call_count,

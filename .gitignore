@@ -2,3 +2,4 @@ build/
 .cache/
 a.out
 *.dSYM
+install/

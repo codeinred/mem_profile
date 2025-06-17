@@ -21,9 +21,9 @@ function(mp_add_library name kind)
         PARSE_ARGV
         2
         arg
-        ""
+        "NO_GLOB_HEADERS"
         "ROOT;NAMESPACE"
-        "SRC_DIRS;SRC_FILES;DEPS;PRIVATE_DEPS;INCLUDE_DIRS;PRIVATE_INCLUDE_DIRS;COMPILE_OPTIONS;PRIVATE_COMPILE_OPTIONS"
+        "SRC_DIRS;SRC_FILES;DEPS;PRIVATE_DEPS;INCLUDE_DIRS;PRIVATE_INCLUDE_DIRS;COMPILE_OPTIONS;PRIVATE_COMPILE_OPTIONS;PRELUDE_HEADERS"
     )
     set(source_files)
     add_library(${name} ${kind})
@@ -39,10 +39,12 @@ function(mp_add_library name kind)
 
     add_library(${arg_NAMESPACE}::${name} ALIAS ${name})
 
+    set(api_include_dirs)
+
     if(DEFINED arg_ROOT)
         file(GLOB_RECURSE files ${arg_ROOT}/include/*.cpp)
         list(APPEND source_files ${files})
-        target_include_directories(${name} ${public_kw} ${arg_ROOT}/include)
+        list(APPEND api_include_dirs "${arg_ROOT}/include")
     endif()
 
     if(DEFINED arg_SRC_DIRS)
@@ -70,7 +72,7 @@ function(mp_add_library name kind)
         target_link_libraries(${name} PRIVATE ${arg_PRIVATE_DEPS})
     endif()
     if(DEFINED arg_INCLUDE_DIRS)
-        target_include_directories(${name} ${public_kw} ${arg_INCLUDE_DIRS})
+        list(APPEND api_include_dirs ${arg_INCLUDE_DIRS})
     endif()
     if(DEFINED arg_PRIVATE_INCLUDE_DIRS)
         target_include_directories(${name} PRIVATE ${arg_PRIVATE_INCLUDE_DIRS})
@@ -81,4 +83,70 @@ function(mp_add_library name kind)
     if(DEFINED arg_PRIVATE_COMPILE_OPTIONS)
         target_compile_options(${name} PRIVATE ${arg_PRIVATE_COMPILE_OPTIONS})
     endif()
+    if(DEFINED arg_PRELUDE_HEADERS)
+        foreach(path IN LISTS arg_PRELUDE_HEADERS)
+            cmake_path(ABSOLUTE_PATH path NORMALIZE)
+            target_compile_options(${name} ${public_kw} "--include=${path}")
+        endforeach()
+    endif()
+
+    if(arg_NO_GLOB_HEADERS)
+        target_include_directories(${name} ${public_kw} ${api_include_dirs})
+    else()
+        list(TRANSFORM api_include_dirs APPEND "/*.h" OUTPUT_VARIABLE header_glob)
+        file(GLOB_RECURSE headers LIST_DIRECTORIES false ${header_glob})
+        message("mp_add_library: lib=${name} header_glob=${header_glob} headers=${headers}")
+
+        target_sources(
+            ${name}
+            ${public_kw}
+            FILE_SET HEADERS
+            BASE_DIRS
+                ${api_include_dirs}
+            FILES
+                ${headers}
+                ${arg_PRELUDE_HEADERS}
+        )
+    endif()
+endfunction()
+
+file(
+    GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/mp_empty.cpp"
+    CONTENT "// This file is used as a stub because `add_library` requires sources
+"
+)
+# Build a shared library out of constituent static libraries
+function(mp_make_shared name)
+    cmake_parse_arguments(
+        PARSE_ARGV
+        1
+        arg
+        ""
+        ""
+        "API_MODULES"
+    )
+
+    add_library(${name} SHARED ${CMAKE_CURRENT_BINARY_DIR}/mp_empty.cpp)
+    foreach(lib IN LISTS arg_API_MODULES)
+        get_target_property(lib_type ${lib} TYPE)
+        get_target_property(lib_include_dirs ${lib} INTERFACE_INCLUDE_DIRECTORIES)
+        get_target_property(lib_headers ${lib} HEADER_SET)
+        get_target_property(lib_dirs ${lib} HEADER_DIRS)
+
+        message("Adding the following headers to ${name}: ${lib_headers}")
+
+        target_sources(
+            ${name}
+            PUBLIC
+            FILE_SET HEADERS
+            BASE_DIRS ${lib_dirs}
+            FILES ${lib_headers}
+        )
+        if(lib_type STREQUAL "STATIC_LIBRARY")
+            target_link_libraries(${name} PRIVATE $<LINK_LIBRARY:WHOLE_ARCHIVE,${lib}>)
+        elseif(NOT(lib_type STREQUAL "INTERFACE"))
+            message("Cannot add library '${lib}' with type ${lib_type} as API module for ${name}")
+        endif()
+    endforeach()
 endfunction()

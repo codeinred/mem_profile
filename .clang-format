@@ -26,5 +26,15 @@ AlignTrailingComments:
   Kind: Always
   OverEmptyLines: 2
 BreakBeforeTernaryOperators: true
+BreakBeforeBinaryOperators: All
 # Penalties
 PenaltyReturnTypeOnItsOwnLine: 150
+
+# Case statements
+AlignConsecutiveShortCaseStatements:
+  Enabled: true
+  AcrossEmptyLines: false
+  AcrossComments: true
+  AlignCaseColons: false
+AllowShortCaseExpressionOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: true
