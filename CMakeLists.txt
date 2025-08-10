@@ -21,7 +21,8 @@ include(cmake/get_cpm.cmake)
 CPMAddPackage("gh:fmtlib/fmt#11.2.0")
 
 find_package(Clang REQUIRED)
-message(STATUS "Using Clang @ ${Clang_DIR} include=${CLANG_INCLUDE_DIRS})")
+message(STATUS "Using Clang @ ${Clang_DIR}\n\tinclude: ${CLANG_INCLUDE_DIRS}\n\tconfig: ${Clang_CONFIG}\n\tCLANG_LINK_CLANG_DYLIB: ${CLANG_LINK_CLANG_DYLIB}")
+message(STATUS "Using LLVM @ ${LLVM_DIR}\n\tconfig: ${LLVM_CONFIG}")
 
 include(cmake/Utils.cmake)
 
