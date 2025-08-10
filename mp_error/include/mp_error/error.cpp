@@ -5,9 +5,11 @@
 #include <source_location>
 #include <string_view>
 
-
+#if _GNU_SOURCE
+extern "C" char* strerror_r(int errnum, char* buff, size_t bufflen);
+#else
 extern "C" int strerror_r(int errnum, char* buff, size_t bufflen);
-
+#endif
 
 namespace mp {
 namespace {
