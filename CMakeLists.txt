@@ -9,6 +9,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
+option(MEM_PROFILE_BUILD_TOOLS "Build tools" ON)
+
+
 if(UNIX)
     add_compile_options(-Wall -fcolor-diagnostics -g)
 endif()
@@ -173,6 +176,7 @@ install(
 )
 
 
-
-add_executable(ast_printer tools/ast_printer.cpp)
-target_link_libraries(ast_printer mp_ast mp_fs fmt::fmt)
+if(MEM_PROFILE_BUILD_TOOLS)
+    add_executable(ast_printer tools/ast_printer.cpp)
+    target_link_libraries(ast_printer mp_ast mp_fs fmt::fmt mp::clang_tooling)
+endif()
