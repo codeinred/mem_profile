@@ -23,6 +23,6 @@ foreach(file IN LISTS examples)
         mp::mp_build_with_plugin
     )
     target_compile_options(
-        ${target_name} PRIVATE -Og
+        ${target_name} PRIVATE -Og -g
     )
 endforeach()
