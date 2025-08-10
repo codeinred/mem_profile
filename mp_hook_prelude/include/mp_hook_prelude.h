@@ -26,7 +26,7 @@ struct _mp_frame_information {
 [[gnu::always_inline]]
 inline void save_state(void*       this_ptr,
                        void*       alloca_block,
-                       size_t      this_size,
+                       mp::size_t      this_size,
                        char const* type_name) {
 
     static_assert(sizeof(mp::_mp_frame_information) <= 48);
