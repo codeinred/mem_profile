@@ -26,14 +26,28 @@ message(STATUS "Using LLVM @ ${LLVM_DIR}\n\tconfig: ${LLVM_CONFIG}")
 
 include(cmake/Utils.cmake)
 
-set(clang_libs
-    clangAST
-    clangBasic
-    clangFrontend
-    clangSerialization
-    clangTooling
-)
-check_targets_exist(TARGETS ${clang_libs})
+
+if(CLANG_LINK_CLANG_DYLIB)
+    set(clang_libs clang-cpp)
+    set(llvm_tool_libs LLVM)
+else()
+    set(clang_libs
+        clangAST
+        clangBasic
+        clangFrontend
+        clangSerialization
+        clangTooling
+    )
+    set(llvm_tool_libs)
+endif()
+
+if(LINUX)
+    find_package(PkgConfig)
+    pkg_check_modules(libunwind REQUIRED IMPORTED_TARGET libunwind libunwind-generic)
+endif()
+
+check_targets_exist(TARGETS ${clang_libs} ${llvm_tool_libs})
+
 
 mp_add_library(
     clang_core
@@ -43,6 +57,15 @@ mp_add_library(
         ${CLANG_INCLUDE_DIRS}
     DEPS
         ${clang_libs}
+)
+
+mp_add_library(
+    clang_tooling
+    INTERFACE
+    NO_GLOB_HEADERS
+    DEPS
+        clang_core
+        ${llvm_tool_libs}
 )
 
 mp_add_library(
@@ -136,6 +159,10 @@ mp_make_shared(
     API_MODULES
         mp::mp_unwind
 )
+
+if(LINUX)
+    target_link_libraries(mp_unwind_shared PRIVATE PkgConfig::libunwind)
+endif()
 
 
 
