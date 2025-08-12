@@ -25,6 +25,8 @@ struct stack_counts {
     size_t event_count;
 };
 
+/// Unwind the stack. Only record instruction pointers, not stack pointers
+size_t mp_unwind(size_t max_frames, uintptr_t* ipp);
 
 /// Performs stack unwind. Unwinds up to max_frames. Returns the number of frames unwound.
 size_t mp_unwind(size_t max_frames, uintptr_t* ipp, uintptr_t* spp);

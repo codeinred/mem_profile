@@ -68,6 +68,23 @@ size_t mp_unwind(size_t max_frames, uintptr_t* ipp, uintptr_t* spp) {
     return max_frames;
 }
 
+size_t mp_unwind(size_t max_frames, uintptr_t* ipp) {
+    unw_cursor_t  cursor;
+    unw_context_t uc;
+
+    unw_getcontext(&uc) | check("mp_unwind: Unable to get context");
+    unw_init_local(&cursor, &uc) | check("mp_unwind: Unable to initialize cursor.");
+
+    for (size_t i = 0; i < max_frames; i++) {
+        unw_get_reg(&cursor, UNW_REG_IP, ipp + i) | check("mp_unwind: Cannot read UNW_REG_IP");
+        int step_result = unw_step(&cursor) | check("mp_unwind: unable to step");
+        // We reached the final frame
+        if (step_result == 0) return i + 1;
+    }
+
+    return max_frames;
+}
+
 
 
 size_t mp_extract_events(size_t           max_events,
