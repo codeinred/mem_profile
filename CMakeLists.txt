@@ -19,6 +19,7 @@ endif()
 include(cmake/get_cpm.cmake)
 
 CPMAddPackage("gh:fmtlib/fmt#11.2.0")
+CPMAddPackage("gh:jeremy-rifkin/cpptrace@1.0.4")
 
 find_package(Clang REQUIRED)
 message(STATUS "Using Clang @ ${Clang_DIR}\n\tinclude: ${CLANG_INCLUDE_DIRS}\n\tconfig: ${Clang_CONFIG}\n\tCLANG_LINK_CLANG_DYLIB: ${CLANG_LINK_CLANG_DYLIB}")
