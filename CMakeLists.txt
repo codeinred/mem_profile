@@ -27,10 +27,9 @@ message(STATUS "Using LLVM @ ${LLVM_DIR}\n\tconfig: ${LLVM_CONFIG}")
 include(cmake/Utils.cmake)
 
 
-if(CLANG_LINK_CLANG_DYLIB)
-    set(clang_libs clang-cpp)
-    set(llvm_tool_libs LLVM)
-else()
+# Check for existence of static library targets. If these exist, link them,
+# otherwise fall back to dynamic library target clang-cpp
+if(TARGET clangFrontend)
     set(clang_libs
         clangAST
         clangBasic
@@ -39,6 +38,9 @@ else()
         clangTooling
     )
     set(llvm_tool_libs)
+else()
+    set(clang_libs clang-cpp)
+    set(llvm_tool_libs LLVM)
 endif()
 
 if(LINUX)
