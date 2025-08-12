@@ -73,13 +73,13 @@ mp_add_library(
 mp_add_library(
     mp_types
     INTERFACE
-    ROOT mp_types
+    ROOT mp/types
 )
 
 mp_add_library(
     mp_core
     STATIC
-    ROOT mp_core
+    ROOT mp/core
     DEPS
         mp_types
     PRIVATE_DEPS
@@ -89,7 +89,7 @@ mp_add_library(
 mp_add_library(
     mp_error
     STATIC
-    ROOT mp_error
+    ROOT mp/error
     DEPS
         mp::mp_core
     PRIVATE_DEPS
@@ -99,7 +99,7 @@ mp_add_library(
 mp_add_library(
     mp_fs
     STATIC
-    ROOT mp_fs
+    ROOT mp/fs
     DEPS
         mp::mp_error
     PRIVATE_DEPS
@@ -109,7 +109,7 @@ mp_add_library(
 mp_add_library(
     mp_ast
     STATIC
-    ROOT mp_ast
+    ROOT mp/ast
     DEPS
         mp::mp_error
         fmt::fmt
@@ -127,14 +127,14 @@ mp_add_library(
 mp_add_library(
     mp_hook_prelude
     INTERFACE
-    INCLUDE_DIRS mp_hook_prelude/include
-    PRELUDE_HEADERS mp_hook_prelude/include/mp_hook_prelude.h
+    INCLUDE_DIRS mp/hook_prelude/include
+    PRELUDE_HEADERS mp/hook_prelude/include/mp_hook_prelude.h
 )
 
 mp_add_library(
     mp_unwind
     STATIC
-    ROOT mp_unwind
+    ROOT mp/unwind
     DEPS
         mp::mp_error
         mp::mp_core
