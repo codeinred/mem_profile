@@ -143,6 +143,15 @@ mp_add_library(
         mp::mp_hook_prelude
 )
 
+mp_add_library(
+    mp_runtime
+    SHARED
+    ROOT mp/runtime
+    DEPS
+        mp::mp_unwind
+        cpptrace::cpptrace
+)
+
 add_library(
     mp_build_with_plugin
     INTERFACE
