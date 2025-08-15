@@ -24,7 +24,7 @@ namespace mp {
 /// Counts the number of living local contexts
 std::atomic_int           LOCAL_CONTEXT_COUNT = 0;
 /// true if tracing is enabled. See tracing_enabled
-std::atomic_bool          TRACING_ENABLED     = false;
+std::atomic_bool          TRACING_ENABLED     = true;
 /// Keeps track of global allocation counts. Local Contexts synchronize with
 /// the global context on their destruction
 GlobalContext             GLOBAL_CONTEXT{};
