@@ -13,8 +13,41 @@
 
 #define MP_GLZ_ENTRY(type, name) #name, &type::name
 
+template <> struct glz::meta<mp::event_type> {
+    using enum mp::event_type;
+    static constexpr auto value = enumerate(FREE, ALLOC, REALLOC);
+};
+
 namespace mp {
 
+struct output_object_info {
+    // Index into event stacktrace
+    std::vector<size_t> trace_index;
+    // id of object being destroyed (unique over lifetime of program)
+    std::vector<u64>    object_id;
+    // address of the object at time of destruction(`this` pointer)
+    std::vector<addr_t> addr;
+    // sizeo of object being destroyed
+    std::vector<size_t> size;
+    /// Index into string table - name of the object's type
+    std::vector<size_t> type;
+};
+} // namespace mp
+
+template <> struct glz::meta<mp::output_object_info> {
+    using T                     = mp::output_object_info;
+    constexpr static auto value = object(
+        //
+        MP_GLZ_ENTRY(mp::output_object_info, trace_index),
+        MP_GLZ_ENTRY(mp::output_object_info, object_id),
+        MP_GLZ_ENTRY(mp::output_object_info, addr),
+        MP_GLZ_ENTRY(mp::output_object_info, size),
+        MP_GLZ_ENTRY(mp::output_object_info, type)
+        //
+    );
+};
+
+namespace mp {
 struct output_event {
     /// A unique 64-bit stamp that can be used to order events
     /// chronologically. Also uniquely identifies an event.
@@ -35,6 +68,8 @@ struct output_event {
 
     // Call stack, expressed as a vector of program counter ids
     std::vector<size_t> pc_id;
+
+    std::optional<output_object_info> object_info;
 };
 } // namespace mp
 
@@ -47,7 +82,8 @@ template <> struct glz::meta<mp::output_event> {
         MP_GLZ_ENTRY(mp::output_event, alloc_size),
         MP_GLZ_ENTRY(mp::output_event, alloc_addr),
         MP_GLZ_ENTRY(mp::output_event, alloc_hint),
-        MP_GLZ_ENTRY(mp::output_event, pc_id)
+        MP_GLZ_ENTRY(mp::output_event, pc_id),
+        MP_GLZ_ENTRY(mp::output_event, object_info)
         //
     );
 };
@@ -213,7 +249,7 @@ inline output_record make_output_record(alloc_counter const& source) {
             }
             record.frame_table.column[i]    = frame.column.value_or(0);
             record.frame_table.line[i]      = frame.line.value_or(0);
-            record.frame_table.file[i]  = strtab.insert(frame.filename);
+            record.frame_table.file[i]      = strtab.insert(frame.filename);
             record.frame_table.func[i]      = strtab.insert(frame.symbol);
             record.frame_table.is_inline[i] = frame.is_inline;
         }
