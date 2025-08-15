@@ -4,7 +4,7 @@
 #include <mem_profile/prelude.h>
 
 namespace mp {
-AllocHookTable ALLOC_HOOK_TABLE{};
+alloc_hook_table ALLOC_HOOK_TABLE{};
 }
 
 #include <atomic>
@@ -27,9 +27,9 @@ std::atomic_int           LOCAL_CONTEXT_COUNT = 0;
 std::atomic_bool          TRACING_ENABLED     = true;
 /// Keeps track of global allocation counts. Local Contexts synchronize with
 /// the global context on their destruction
-GlobalContext             GLOBAL_CONTEXT{};
+global_context             GLOBAL_CONTEXT{};
 /// Keeps track of allocation counts on the current thread.
-thread_local LocalContext LOCAL_CONTEXT{};
+thread_local local_context LOCAL_CONTEXT{};
 
 /// Tracing is enabled provided that there are living local contexts.
 /// At the end of the program, all the local contexts will be destroyed
@@ -86,9 +86,9 @@ constexpr size_t BACKTRACE_BUFFER_SIZE = 1024;
         if (context.nest_level == 0) {                                                             \
             auto guard = context.inc_nested();                                                     \
                                                                                                    \
-            mp::Addr  trace_buff[BACKTRACE_BUFFER_SIZE];                                           \
-            size_t    trace_size = mp::mp_unwind(BACKTRACE_BUFFER_SIZE, trace_buff);               \
-            TraceView trace_view{trace_buff, trace_size};                                          \
+            mp::addr_t trace_buff[BACKTRACE_BUFFER_SIZE];                                          \
+            size_t     trace_size = mp::mp_unwind(BACKTRACE_BUFFER_SIZE, trace_buff);              \
+            trace_view trace_view{trace_buff, trace_size};                                         \
             context.counter.record_alloc(EVENT_COUNTER++,                                          \
                                          _type,                                                    \
                                          _alloc_size,                                              \
@@ -104,7 +104,7 @@ using namespace mp;
 extern "C" void* malloc(size_t size) {
     auto result = mperf_malloc(size);
 
-    RECORD_ALLOC(EventType::ALLOC, size, result, nullptr);
+    RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
 
     return result;
 }
@@ -112,7 +112,7 @@ extern "C" void* malloc(size_t size) {
 extern "C" void* calloc(size_t n, size_t size) {
     auto result = mperf_calloc(n, size);
 
-    RECORD_ALLOC(EventType::ALLOC, n * size, result, nullptr);
+    RECORD_ALLOC(event_type::ALLOC, n * size, result, nullptr);
 
     return result;
 }
@@ -120,7 +120,7 @@ extern "C" void* calloc(size_t n, size_t size) {
 extern "C" void* realloc(void* hint, size_t n) {
     auto result = mperf_realloc(hint, n);
 
-    RECORD_ALLOC(EventType::ALLOC, n, result, hint);
+    RECORD_ALLOC(event_type::ALLOC, n, result, hint);
 
     return result;
 }
@@ -129,14 +129,14 @@ extern "C" void* realloc(void* hint, size_t n) {
 extern "C" void* memalign(size_t alignment, size_t size) {
     auto result = mperf_memalign(alignment, size);
 
-    RECORD_ALLOC(EventType::ALLOC, size, result, nullptr);
+    RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
 
     return result;
 }
 
 
 extern "C" void free(void* ptr) {
-    RECORD_ALLOC(EventType::FREE, 0, ptr, nullptr);
+    RECORD_ALLOC(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
 
@@ -154,7 +154,7 @@ extern "C" void free(void* ptr) {
     for (;;) {                                                                                     \
         void* result = alloc_expr;                                                                 \
         if (result) {                                                                              \
-            RECORD_ALLOC(EventType::ALLOC, count, result, nullptr);                                \
+            RECORD_ALLOC(event_type::ALLOC, count, result, nullptr);                               \
             return result;                                                                         \
         }                                                                                          \
         std::new_handler new_handler = std::get_new_handler();                                     \
@@ -181,45 +181,45 @@ void* operator new[](size_t count, std::align_val_t al) {
 
 void* operator new(size_t count, const std::nothrow_t&) noexcept {
     auto result = mperf_malloc(count);
-    RECORD_ALLOC(EventType::ALLOC, count, result, nullptr);
+    RECORD_ALLOC(event_type::ALLOC, count, result, nullptr);
     return result;
 }
 
 void* operator new[](size_t count, const std::nothrow_t&) noexcept {
     auto result = mperf_malloc(count);
-    RECORD_ALLOC(EventType::ALLOC, count, result, nullptr);
+    RECORD_ALLOC(event_type::ALLOC, count, result, nullptr);
     return result;
 }
 
 void* operator new(size_t count, std::align_val_t al, const std::nothrow_t&) noexcept {
     auto result = mperf_memalign(count, (size_t)al);
-    RECORD_ALLOC(EventType::ALLOC, count, result, nullptr);
+    RECORD_ALLOC(event_type::ALLOC, count, result, nullptr);
     return result;
 }
 
 void* operator new[](size_t count, std::align_val_t al, const std::nothrow_t&) noexcept {
 
     auto result = mperf_memalign(count, (size_t)al);
-    RECORD_ALLOC(EventType::ALLOC, count, result, nullptr);
+    RECORD_ALLOC(event_type::ALLOC, count, result, nullptr);
     return result;
 }
 
 /// Corresponding delete operators
 /// See: https://en.cppreference.com/w/cpp/memory/new/operator_delete
 void operator delete(void* ptr) noexcept {
-    RECORD_ALLOC(EventType::FREE, 0, ptr, nullptr);
+    RECORD_ALLOC(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
 void operator delete[](void* ptr) noexcept {
-    RECORD_ALLOC(EventType::FREE, 0, ptr, nullptr);
+    RECORD_ALLOC(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
 void operator delete(void* ptr, std::align_val_t al) noexcept {
-    RECORD_ALLOC(EventType::FREE, 0, ptr, nullptr);
+    RECORD_ALLOC(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
 void operator delete[](void* ptr, std::align_val_t al) noexcept {
-    RECORD_ALLOC(EventType::FREE, 0, ptr, nullptr);
+    RECORD_ALLOC(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
 
@@ -229,10 +229,10 @@ void operator delete[](void* ptr, std::align_val_t al) noexcept {
 ////////////////////////////////////////////////////
 
 namespace mp {
-LocalContext::LocalContext() noexcept {
+local_context::local_context() noexcept {
     LOCAL_CONTEXT_COUNT.fetch_add(1, std::memory_order_relaxed);
 }
-LocalContext::~LocalContext() {
+local_context::~local_context() {
     GLOBAL_CONTEXT.drain(*this);
     int prev_value = LOCAL_CONTEXT_COUNT.fetch_sub(1, std::memory_order_relaxed);
 
@@ -243,25 +243,25 @@ LocalContext::~LocalContext() {
     }
 }
 
-void GlobalContext::drain(LocalContext& context) {
+void global_context::drain(local_context& context) {
     auto guard  = std::lock_guard(context_lock);
     auto guard2 = LOCAL_CONTEXT.inc_nested();
     // Drain the counts from the local_context
     counter.drain(context.counter);
 }
 
-void GlobalContext::generate_report() {
+void global_context::generate_report() {
     auto guard = std::lock_guard(context_lock);
     counter.dump_json("malloc_stats.json");
 }
 
-GlobalContext::~GlobalContext() { generate_report(); }
+global_context::~global_context() { generate_report(); }
 } // namespace mp
 
 
 
 ///////////////////////////////////
-////  AllocCounter::dump_json  ////
+////  alloc_counter::dump_json  ////
 ///////////////////////////////////
 
 /// Used to obtnain symbol information (mangled function name, file name,
@@ -279,12 +279,12 @@ namespace {
 /// of the corresponding malloc
 ///
 /// Assumes events are sorted by ID
-void match_allocs_and_frees(std::vector<EventRecord>& records) {
+void match_allocs_and_frees(std::vector<event_record>& records) {
     using ptr_t = void const*;
     std::unordered_map<ptr_t, size_t> sizes;
 
     for (auto& record : records) {
-        if (record.type == EventType::FREE) {
+        if (record.type == event_type::FREE) {
             record.alloc_size = sizes[record.alloc_ptr];
         } else {
             sizes[record.alloc_ptr] = record.alloc_size;
@@ -295,7 +295,7 @@ void match_allocs_and_frees(std::vector<EventRecord>& records) {
 
 #include <glaze/glaze.hpp>
 
-void mp::AllocCounter::dump_json(char const* filename) {
+void mp::alloc_counter::dump_json(char const* filename) {
     using namespace mp;
 
     auto data = make_output_record(*this);
@@ -310,40 +310,40 @@ void mp::AllocCounter::dump_json(char const* filename) {
 
 
 /////////////////////////////////////////////////
-////  AllocHookTable::get_* implementatinos  ////
+////  alloc_hook_table::get_* implementatinos  ////
 /////////////////////////////////////////////////
 
 /// Used to generate alloc hook table
 #include <mem_profile/dlsym.h>
 
 namespace mp {
-malloc_t AllocHookTable::get_malloc() noexcept {
+malloc_t alloc_hook_table::get_malloc() noexcept {
     if (malloc_ == nullptr) [[unlikely]] {
-        malloc_ = dlsymLoadOrExitAs<malloc_t>(RTLD_NEXT, "malloc");
+        malloc_ = dlsym_load_or_exit_as<malloc_t>(RTLD_NEXT, "malloc");
     }
     return malloc_;
 }
-realloc_t AllocHookTable::get_realloc() noexcept {
+realloc_t alloc_hook_table::get_realloc() noexcept {
     if (realloc_ == nullptr) [[unlikely]] {
-        realloc_ = dlsymLoadOrExitAs<realloc_t>(RTLD_NEXT, "realloc");
+        realloc_ = dlsym_load_or_exit_as<realloc_t>(RTLD_NEXT, "realloc");
     }
     return realloc_;
 }
-memalign_t AllocHookTable::get_memalign() noexcept {
+memalign_t alloc_hook_table::get_memalign() noexcept {
     if (memalign_ == nullptr) [[unlikely]] {
-        memalign_ = dlsymLoadOrExitAs<memalign_t>(RTLD_NEXT, "memalign");
+        memalign_ = dlsym_load_or_exit_as<memalign_t>(RTLD_NEXT, "memalign");
     }
     return memalign_;
 }
-free_t AllocHookTable::get_free() noexcept {
+free_t alloc_hook_table::get_free() noexcept {
     if (free_ == nullptr) [[unlikely]] {
-        free_ = dlsymLoadOrExitAs<free_t>(RTLD_NEXT, "free");
+        free_ = dlsym_load_or_exit_as<free_t>(RTLD_NEXT, "free");
     }
     return free_;
 }
-calloc_t AllocHookTable::get_calloc() noexcept {
+calloc_t alloc_hook_table::get_calloc() noexcept {
     if (calloc_ == nullptr) [[unlikely]] {
-        calloc_ = dlsymLoadOrExitAs<calloc_t>(RTLD_NEXT, "calloc");
+        calloc_ = dlsym_load_or_exit_as<calloc_t>(RTLD_NEXT, "calloc");
     }
     return calloc_;
 }

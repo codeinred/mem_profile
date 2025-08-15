@@ -22,7 +22,7 @@ struct output_event {
     u64 id;
 
     /// Event type
-    EventType type;
+    event_type type;
 
     /// Size of allocation (if applicable, 0 for free)
     size_t alloc_size;
@@ -53,6 +53,46 @@ template <> struct glz::meta<mp::output_event> {
 };
 
 namespace mp {
+struct output_frame_table {
+    /// Each program counter corresponds to 1 or more frames.
+    /// (If a function is inlined, a program counter will correspond to more than
+    /// one frame)
+    ///
+    /// The frames for pc[i] range from offsets[i] to offsets[i + 1]
+    std::vector<size_t> offsets;
+
+
+    /// Source file corresponding to program counter (index into strtab)
+    std::vector<size_t> file;
+    /// Function name corresponding to program counter (index into strtab)
+    std::vector<size_t> func;
+    /// Symbol name corresponding to program counter (index into strtab)
+    //std::vector<size_t> pc_sym_name;
+    /// Source File Line Number corresponding to program counter
+    std::vector<u32>    line;
+    /// Soruce File Columnn Number corresponding to program counter
+    std::vector<u32>    column;
+
+    /// true if the given frame is inline
+    std::vector<bool> is_inline;
+};
+} // namespace mp
+
+template <> struct glz::meta<mp::output_frame_table> {
+    using T                     = mp::output_frame_table;
+    constexpr static auto value = object(
+        //
+        MP_GLZ_ENTRY(mp::output_frame_table, offsets),
+        MP_GLZ_ENTRY(mp::output_frame_table, file),
+        MP_GLZ_ENTRY(mp::output_frame_table, func),
+        MP_GLZ_ENTRY(mp::output_frame_table, line),
+        MP_GLZ_ENTRY(mp::output_frame_table, column),
+        MP_GLZ_ENTRY(mp::output_frame_table, is_inline)
+        //
+    );
+};
+
+namespace mp {
 
 struct file_loc {
     u32 lineno{};
@@ -64,17 +104,9 @@ struct output_record {
     std::vector<std::string> strtab;
 
     /// Table of program counters
-    std::vector<Addr>   pc;
-    /// Source file corresponding to program counter (index into strtab)
-    std::vector<size_t> pc_filename;
-    /// Function name corresponding to program counter (index into strtab)
-    std::vector<size_t> pc_func;
-    /// Symbol name corresponding to program counter (index into strtab)
-    //std::vector<size_t> pc_sym_name;
-    /// Source File Line Number corresponding to program counter
-    std::vector<u32>    pc_line;
-    /// Soruce File Columnn Number corresponding to program counter
-    std::vector<u32>    pc_column;
+    std::vector<addr_t> pc;
+
+    output_frame_table frame_table;
 
     /// Vector of events
     std::vector<output_event> events;
@@ -88,10 +120,7 @@ template <> struct glz::meta<mp::output_record> {
         //
         MP_GLZ_ENTRY(mp::output_record, strtab),
         MP_GLZ_ENTRY(mp::output_record, pc),
-        MP_GLZ_ENTRY(mp::output_record, pc_filename),
-        MP_GLZ_ENTRY(mp::output_record, pc_func),
-        MP_GLZ_ENTRY(mp::output_record, pc_line),
-        MP_GLZ_ENTRY(mp::output_record, pc_column),
+        MP_GLZ_ENTRY(mp::output_record, frame_table),
         MP_GLZ_ENTRY(mp::output_record, events)
         //
     );
@@ -122,17 +151,17 @@ struct string_table {
 };
 
 
-inline output_record make_output_record(AllocCounter const& source) {
+inline output_record make_output_record(alloc_counter const& source) {
     auto const& events      = source.events();
     size_t      events_size = events.size();
 
-    ankerl::unordered_dense::set<Addr> pc_set;
+    ankerl::unordered_dense::set<addr_t> pc_set;
     for (auto const& event : events) {
         pc_set.insert(event.trace.begin(), event.trace.end());
     }
-    std::vector<Addr> pcs(pc_set.begin(), pc_set.end());
+    std::vector<addr_t> pcs(pc_set.begin(), pc_set.end());
     std::sort(pcs.data(), pcs.data() + pcs.size());
-    ankerl::unordered_dense::map<Addr, size_t> pc_ids_lookup(pcs.size() * 2);
+    ankerl::unordered_dense::map<addr_t, size_t> pc_ids_lookup(pcs.size() * 2);
 
     for (size_t i = 0; i < pcs.size(); i++) {
         pc_ids_lookup[pcs[i]] = i;
@@ -147,28 +176,49 @@ inline output_record make_output_record(AllocCounter const& source) {
     trace.print();
     size_t trace_size = trace.frames.size();
 
-    MP_ASSERT_EQ(trace.frames.size(), pcs.size(), "trace_size must match pcs.size()");
+    // SANITY CHECK: ensure that the number of non-inline frames
+    // matches the number of program counters
+    {
+        size_t non_inline_frame_count = 0;
+        for (auto const& frame : trace.frames) {
+            non_inline_frame_count += !frame.is_inline;
+        }
+
+        MP_ASSERT_EQ(non_inline_frame_count,
+                     pcs.size(),
+                     "The number of non_inline frames must match the number of program counters");
+    }
 
 
     output_record record;
 
     record.pc = pcs;
-    record.pc_column.resize(trace_size);
-    record.pc_line.resize(trace_size);
-    record.pc_func.resize(trace_size);
-    record.pc_filename.resize(trace_size);
 
+    record.frame_table.offsets.resize(record.pc.size() + 1);
+    record.frame_table.column.resize(trace_size);
+    record.frame_table.line.resize(trace_size);
+    record.frame_table.func.resize(trace_size);
+    record.frame_table.file.resize(trace_size);
+    record.frame_table.is_inline.resize(trace_size);
 
 
     string_table strtab;
 
-    for (size_t i = 0; i < trace_size; i++) {
-        auto const& frame     = trace.frames[i];
-        record.pc_column[i]   = frame.column.value_or(0);
-        record.pc_line[i]     = frame.line.value_or(0);
-        record.pc_filename[i] = strtab.insert(frame.filename);
-        record.pc_func[i]     = strtab.insert(frame.symbol);
+    {
+        size_t pc_i = 0;
+        for (size_t i = 0; i < trace_size; i++) {
+            auto const& frame = trace.frames[i];
+            if (!frame.is_inline) {
+                record.frame_table.offsets[++pc_i] = i + 1;
+            }
+            record.frame_table.column[i]    = frame.column.value_or(0);
+            record.frame_table.line[i]      = frame.line.value_or(0);
+            record.frame_table.file[i]  = strtab.insert(frame.filename);
+            record.frame_table.func[i]      = strtab.insert(frame.symbol);
+            record.frame_table.is_inline[i] = frame.is_inline;
+        }
     }
+
     record.strtab = std::move(strtab.strtab);
 
     record.events.resize(events_size);

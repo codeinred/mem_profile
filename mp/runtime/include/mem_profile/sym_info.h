@@ -14,20 +14,18 @@
 
 
 namespace mp {
-    using Addr = uintptr_t;
+using addr_t = uintptr_t;
 
-    /// Attempts to construct a string_view from the given C string.
-    /// If the given C string is null, returns the given fallback message
-    inline std::string_view unwrap_cstr_or(
-        char const* c_str,
-        std::string_view alt) noexcept {
-        return c_str ? std::string_view(c_str) : alt;
+/// Attempts to construct a string_view from the given C string.
+/// If the given C string is null, returns the given fallback message
+inline std::string_view unwrap_cstr_or(char const* c_str, std::string_view alt) noexcept {
+    return c_str ? std::string_view(c_str) : alt;
     }
 
 
     /// Holds information about a program counter
-    struct PCInfo {
-        static inline intptr_t get_offset(Addr base, Addr addr) noexcept {
+    struct pc_info {
+        static inline intptr_t get_offset(addr_t base, addr_t addr) noexcept {
             return (intptr_t)addr - (intptr_t)base;
         }
 
@@ -53,25 +51,25 @@ namespace mp {
         size_t func_lineno;
     };
 
-    struct DebugInfo {
+    struct debug_info {
         size_t src_file;
         size_t func_name;
         size_t lineno;
     };
 
-    struct InfoStore {
+    struct info_store {
         constexpr static std::string_view EMPTY_STRING {};
         /// List of object files found in call graph
-        IDStore object_files;
+        id_store                          object_files;
         /// List of mangled function names found in call graph
-        IDStore sym_names;
+        id_store                          sym_names;
         /// List of demangled function names
-        IDStore func_names;
+        id_store                          func_names;
         /// List of source files
-        IDStore source_files;
+        id_store                          source_files;
 
         /// Name demangler
-        NameDemangler demangler;
+        name_demangler demangler;
 
 
         /// Fill in dest.source_file, dest.func_name, and dest.func_lineno based
@@ -79,7 +77,7 @@ namespace mp {
         /// for the function, unless the function's address couldn't be
         /// determined, in which case the address used will be the program
         /// counter
-        void fill_declaration_info(Addr func_addr, PCInfo& dest) {
+        void fill_declaration_info(addr_t func_addr, pc_info& dest) {
             bool obtained_debug_info = false;
             auto callback = [&, this](
                                 [[maybe_unused]] uint64_t pc,
@@ -126,8 +124,8 @@ namespace mp {
             }
         }
 
-        PCInfo get_info(Addr pc) {
-            PCInfo result {};
+        pc_info get_info(addr_t pc) {
+            pc_info result{};
 
             Dl_info info {};
 
@@ -202,10 +200,9 @@ namespace mp {
 
 
 
-
         /// Get the full set of debug info for a symbol. Will unroll inlined
         /// functions to identify the call stack
-        void full_debug_info(Addr pc, std::vector<DebugInfo>& dest) {
+        void full_debug_info(addr_t pc, std::vector<debug_info>& dest) {
             dest.clear();
 
             auto callback = [&, this](
@@ -222,7 +219,7 @@ namespace mp {
                 auto func = function ? demangler.demangle(function)
                                      : std::string_view {};
 
-                dest.push_back(DebugInfo {
+                dest.push_back(debug_info{
                     source_files.add(file),
                     func_names.add(func),
                     size_t(lineno),

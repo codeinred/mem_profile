@@ -21,7 +21,7 @@ namespace mp {
     }
 
     /// Provides callback and error handlers for libbacktrace's backtrace_simple
-    class SimpleBacktraceHandler {
+    class simple_backtrace_handler {
         uintptr_t* buff;
         size_t size_;
         size_t capacity_;
@@ -34,7 +34,7 @@ namespace mp {
             ERROR = 2,
         };
 
-        SimpleBacktraceHandler(uintptr_t* buff, size_t count) noexcept
+        simple_backtrace_handler(uintptr_t* buff, size_t count) noexcept
           : buff(buff)
           , size_(0)
           , capacity_(count)
@@ -66,30 +66,30 @@ namespace mp {
 
         constexpr size_t size() const noexcept { return size_; }
 
-        /// Expects data to be a pointer to a SimpleBacktraceHandler. Invokes
-        /// SimpleBacktraceHandler::save_pc(pc)
+        /// Expects data to be a pointer to a simple_backtrace_handler. Invokes
+        /// simple_backtrace_handler::save_pc(pc)
         static int callback(void* data, uintptr_t pc) noexcept {
-            return reinterpret_cast<SimpleBacktraceHandler*>(data)->save_pc(pc);
+            return reinterpret_cast<simple_backtrace_handler*>(data)->save_pc(pc);
         }
 
-        /// Expects data to be a pointer to a SimpleBacktraceHandler. Invokes
-        /// SimpleBacktraceHandler::print_error(msg, errnum)
+        /// Expects data to be a pointer to a simple_backtrace_handler. Invokes
+        /// simple_backtrace_handler::print_error(msg, errnum)
         static void error_callback(
             void* data,
             char const* msg,
             int errnum) noexcept {
-            return reinterpret_cast<SimpleBacktraceHandler*>(data)->print_error(
+            return reinterpret_cast<simple_backtrace_handler*>(data)->print_error(
                 msg,
                 errnum);
         }
     };
 
     /// Represents an errror obtained when computing a backtrace
-    struct BacktraceError : std::exception {
+    struct backtrace_error : std::exception {
         std::string msg;
         int errnum;
 
-        BacktraceError(std::string msg, int errnum) noexcept
+        backtrace_error(std::string msg, int errnum) noexcept
           : msg(static_cast<std::string&&>(msg))
           , errnum(errnum) {}
 
@@ -121,16 +121,16 @@ namespace mp {
         uintptr_t* buff,
         size_t count) noexcept {
         constexpr uintptr_t FULL_PTR = ~uintptr_t {0};
-        SimpleBacktraceHandler handler(buff, count);
+        simple_backtrace_handler handler(buff, count);
 
         int res = backtrace_simple(
             BACKTRACE_STATE,
             1,
-            SimpleBacktraceHandler::callback,
-            SimpleBacktraceHandler::error_callback,
+            simple_backtrace_handler::callback,
+            simple_backtrace_handler::error_callback,
             &handler);
 
-        if (res == SimpleBacktraceHandler::OUT_OF_SPACE) {
+        if (res == simple_backtrace_handler::OUT_OF_SPACE) {
             std::setbuf(stderr, nullptr);
             fwrite_msg(
                 stderr,

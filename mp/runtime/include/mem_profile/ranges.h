@@ -8,8 +8,7 @@ namespace mp {
     struct Source : Impl {
         using Impl::next;
     };
-    template <class Iter>
-    struct IterSource {
+    template <class Iter> struct iter_source {
         Iter begin;
         Iter end;
         using value_type = typename std::iterator_traits<Iter>::value_type;
@@ -23,8 +22,7 @@ namespace mp {
             }
         }
     };
-    template <class Iter, auto member>
-    struct MemberIterSource {
+    template <class Iter, auto member> struct member_iter_source {
         Iter begin;
         Iter end;
         using value_type = std::decay_t<decltype((*begin).*member)>;
@@ -38,8 +36,7 @@ namespace mp {
             }
         }
     };
-    template <class Iter, class F>
-    struct MapIterSource {
+    template <class Iter, class F> struct map_iter_source {
         Iter begin;
         Iter end;
         F func;
@@ -59,22 +56,19 @@ namespace mp {
     template <class Range>
     auto make_source(Range& range) {
         using iter_t = decltype(std::begin(range));
-        return Source<IterSource<iter_t>> {std::begin(range), std::end(range)};
+        return Source<iter_source<iter_t>>{std::begin(range), std::end(range)};
     }
     template <class Range, class Func>
     auto make_source(Range& range, Func&& func) {
         using iter_t = decltype(std::begin(range));
-        return Source<MapIterSource<iter_t, Func>> {
-            std::begin(range),
-            std::end(range),
-            static_cast<Func&&>(func)};
+        return Source<map_iter_source<iter_t, Func>>{std::begin(range),
+                                                     std::end(range),
+                                                     static_cast<Func&&>(func)};
     }
 
     template <auto ptr, class Range>
     auto make_source(Range& range) {
         using iter_t = decltype(std::begin(range));
-        return Source<MemberIterSource<iter_t, ptr>> {
-            std::begin(range),
-            std::end(range)};
+        return Source<member_iter_source<iter_t, ptr>>{std::begin(range), std::end(range)};
     }
 } // namespace mp
