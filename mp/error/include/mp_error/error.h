@@ -6,6 +6,15 @@
 
 #define ERR(...) ::mp::mp_error(fmt::format(__VA_ARGS__))
 
+#define MP_ASSERT_EQ(a, b, msg)                                                                    \
+    {                                                                                              \
+        auto const& _val1 = a;                                                                     \
+        auto const& _val2 = b;                                                                     \
+        if (_val1 != _val2) {                                                                      \
+            throw ERR("Error: Expected {} == {} but {} != {}. {}", #a, #b, _val1, _val2, msg);     \
+        }                                                                                          \
+    }
+
 namespace mp {
 struct c_errcode {
     int errcode;

@@ -3,7 +3,7 @@
 #include <optional>
 #include <type_traits>
 
-namespace mem_profile {
+namespace mp {
     template <class Impl>
     struct Source : Impl {
         using Impl::next;
@@ -77,4 +77,4 @@ namespace mem_profile {
             std::begin(range),
             std::end(range)};
     }
-} // namespace mem_profile
+} // namespace mp

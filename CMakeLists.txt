@@ -18,8 +18,21 @@ endif()
 
 include(cmake/get_cpm.cmake)
 
+
 CPMAddPackage("gh:fmtlib/fmt#11.2.0")
 CPMAddPackage("gh:jeremy-rifkin/cpptrace@1.0.4")
+CPMAddPackage("gh:stephenberry/glaze@3.0.0")
+
+add_library(ankerl_unordered_dense INTERFACE)
+target_include_directories(
+    ankerl_unordered_dense
+    INTERFACE
+        mp/3rd/ankerl/include
+)
+add_library(
+    ankerl::unordered_dense
+    ALIAS ankerl_unordered_dense
+)
 
 find_package(Clang REQUIRED)
 message(STATUS "Using Clang @ ${Clang_DIR}\n\tinclude: ${CLANG_INCLUDE_DIRS}\n\tconfig: ${Clang_CONFIG}\n\tCLANG_LINK_CLANG_DYLIB: ${CLANG_LINK_CLANG_DYLIB}")
@@ -147,10 +160,15 @@ mp_add_library(
     mp_runtime
     SHARED
     ROOT mp/runtime
+    PRIVATE_COMPILE_FEATURES
+        cxx_std_23
     DEPS
         mp::mp_unwind
         cpptrace::cpptrace
+        glaze::glaze
+        ankerl::unordered_dense
 )
+target_compile_features(mp_runtime PRIVATE cxx_std_23)
 
 add_library(
     mp_build_with_plugin

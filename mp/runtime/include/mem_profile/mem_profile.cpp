@@ -3,7 +3,7 @@
 ////////////////////////////////////////
 #include <mem_profile/prelude.h>
 
-namespace mem_profile {
+namespace mp {
 AllocHookTable ALLOC_HOOK_TABLE{};
 }
 
@@ -20,7 +20,7 @@ AllocHookTable ALLOC_HOOK_TABLE{};
 /// - https://en.cppreference.com/w/cpp/language/siof
 /// - https://en.cppreference.com/w/cpp/utility/program/exit
 
-namespace mem_profile {
+namespace mp {
 /// Counts the number of living local contexts
 std::atomic_int           LOCAL_CONTEXT_COUNT = 0;
 /// true if tracing is enabled. See tracing_enabled
@@ -39,7 +39,7 @@ thread_local LocalContext LOCAL_CONTEXT{};
 /// synchronizes with the global context. Then when the global context is
 /// destroyed, the global context generates a report
 inline bool tracing_enabled() noexcept { return TRACING_ENABLED.load(std::memory_order_relaxed); }
-} // namespace mem_profile
+} // namespace mp
 
 
 
@@ -81,14 +81,14 @@ constexpr size_t BACKTRACE_BUFFER_SIZE = 1024;
 /// - records the current allocation and it's backtrace
 /// - re-enables tracing (the guard re-enables it upon destruction)
 #define RECORD_ALLOC(_type, _alloc_size, _alloc_ptr, _alloc_hint)                                  \
-    if (mem_profile::tracing_enabled()) {                                                          \
-        auto& context = mem_profile::LOCAL_CONTEXT;                                                \
+    if (mp::tracing_enabled()) {                                                                   \
+        auto& context = mp::LOCAL_CONTEXT;                                                         \
         if (context.nest_level == 0) {                                                             \
             auto guard = context.inc_nested();                                                     \
                                                                                                    \
-            mem_profile::Addr trace_buff[BACKTRACE_BUFFER_SIZE];                                   \
-            size_t            trace_size = mp::mp_unwind(BACKTRACE_BUFFER_SIZE, trace_buff);       \
-            TraceView         trace_view{trace_buff, trace_size};                                  \
+            mp::Addr  trace_buff[BACKTRACE_BUFFER_SIZE];                                           \
+            size_t    trace_size = mp::mp_unwind(BACKTRACE_BUFFER_SIZE, trace_buff);               \
+            TraceView trace_view{trace_buff, trace_size};                                          \
             context.counter.record_alloc(EVENT_COUNTER++,                                          \
                                          _type,                                                    \
                                          _alloc_size,                                              \
@@ -99,7 +99,7 @@ constexpr size_t BACKTRACE_BUFFER_SIZE = 1024;
     }
 
 
-using namespace mem_profile;
+using namespace mp;
 
 extern "C" void* malloc(size_t size) {
     auto result = mperf_malloc(size);
@@ -228,7 +228,7 @@ void operator delete[](void* ptr, std::align_val_t al) noexcept {
 ////  Local and global context implementations  ////
 ////////////////////////////////////////////////////
 
-namespace mem_profile {
+namespace mp {
 LocalContext::LocalContext() noexcept {
     LOCAL_CONTEXT_COUNT.fetch_add(1, std::memory_order_relaxed);
 }
@@ -256,7 +256,7 @@ void GlobalContext::generate_report() {
 }
 
 GlobalContext::~GlobalContext() { generate_report(); }
-} // namespace mem_profile
+} // namespace mp
 
 
 
@@ -264,56 +264,15 @@ GlobalContext::~GlobalContext() { generate_report(); }
 ////  AllocCounter::dump_json  ////
 ///////////////////////////////////
 
-/// Used to serialize output
-#include <mem_profile/json.h>
 /// Used to obtnain symbol information (mangled function name, file name,
 /// offsets, etc) from an address
-#include <mem_profile/sym_info.h>
-/// Used to demangle symbol names
-#include <mem_profile/abi.h>
-/// Used to sort addresses
-#include <algorithm>
 #include <cstring>
+#include <mem_profile/abi.h>
 #include <mem_profile/containers.h>
-#include <memory>
-#include <optional>
-#include <queue>
+#include <mem_profile/sym_info.h>
 
+#include <mem_profile/output_record.h>
 
-
-/// Serializes a node in a call graph
-namespace mem_profile {
-
-inline void json_print(FILE* dest, EventType type) {
-    switch (type) {
-    case EventType::ALLOC:   json_print(dest, "ALLOC"); return;
-    case EventType::REALLOC: json_print(dest, "REALLOC"); return;
-    case EventType::FREE:    json_print(dest, "FREE"); return;
-    default:                 json_print(dest, (int)type);
-    }
-}
-struct CallgraphSerializer {
-  private:
-    std::unordered_map<Addr, size_t> const* addr_index;
-    using iterator = typename std::unordered_map<Addr, CallGraph>::const_iterator;
-
-  public:
-    CallgraphSerializer(std::unordered_map<Addr, size_t> const& addr_index) noexcept
-      : addr_index(&addr_index) {}
-
-    auto operator()(std::pair<Addr const, CallGraph> const& pair) -> std::
-        tuple<size_t, uint64_t, uint64_t, Source<MapIterSource<iterator, CallgraphSerializer>>> {
-        Addr             key = pair.first;
-        CallGraph const& n   = pair.second;
-        size_t           idx = addr_index->at(key);
-
-        return std::make_tuple(idx,
-                               n.num_allocs,
-                               n.num_bytes,
-                               make_source(n.child_counts, CallgraphSerializer{*this}));
-    }
-};
-} // namespace mem_profile
 
 namespace {
 /// Computes the sizes of all frees that took place, based on the size
@@ -334,108 +293,18 @@ void match_allocs_and_frees(std::vector<EventRecord>& records) {
 }
 } // namespace
 
-void mem_profile::AllocCounter::dump_json(char const* filename) {
-    using namespace mem_profile;
+#include <glaze/glaze.hpp>
 
-    // Sort events by ID
-    std::sort(events_.begin(), events_.end(), [](EventRecord const& a, EventRecord const& b) {
-        return a.id < b.id;
-    });
+void mp::AllocCounter::dump_json(char const* filename) {
+    using namespace mp;
 
-    match_allocs_and_frees(events_);
+    auto data = make_output_record(*this);
 
-    auto              counts = get_counts();
-    std::vector<Addr> addrs  = counts.get_addrs();
-    std::sort(addrs.data(), addrs.data() + addrs.size(), std::less<Addr>{});
-
-    using mem_profile::InfoStore;
-    using mem_profile::PCInfo;
-
-    size_t const                     count = addrs.size();
-    std::vector<PCInfo>              info(count);
-    std::unordered_map<Addr, size_t> addr_index;
-    addr_index.reserve(count);
-
-    InfoStore info_store;
-    for (size_t i = 0; i < count; i++) {
-        Addr addr        = addrs[i];
-        addr_index[addr] = i;
-        info[i]          = info_store.get_info(addr);
+    auto errc = glz::write_file_json(data, filename, std::string{});
+    if (errc) {
+        std::string glz_error = glz::format_error(errc, std::string{});
+        throw ERR("Error when dumping json - {}", glz_error);
     }
-    fprintf(stderr, "Count: %zu\n", count);
-
-    std::vector<mem_profile::DebugInfo> debug_info_buff;
-
-    auto get_debug_info = [&](Addr a) {
-        info_store.full_debug_info(a, debug_info_buff);
-
-        return make_source(debug_info_buff, [](DebugInfo const& dbg) {
-            return std::array<size_t, 3>{dbg.src_file, dbg.func_name, dbg.lineno};
-        });
-    };
-
-    auto get_alloc_count = [&](Addr a) { return counts.counts[a].num_allocs; };
-    auto get_alloc_bytes = [&](Addr a) { return counts.counts[a].num_bytes; };
-
-    auto file = fopen(filename, "wb");
-
-    print_object(
-        file,
-        Field{"version", "0.0.0"},
-        /// Stats
-        Field{"total_allocs", total_allocs_.num_allocs},
-        Field{"total_bytes", total_allocs_.num_bytes},
-        Field{"pc.alloc_counts", make_source(addrs, get_alloc_count)},
-        Field{"pc.alloc_bytes", make_source(addrs, get_alloc_bytes)},
-        /// Sym info
-        Field{"pc.object_file", make_source<&PCInfo::object_file>(info)},
-        Field{"pc.addr", make_source<&PCInfo::addr>(info)},
-        Field{"pc.sym_name", make_source<&PCInfo::sym_name>(info)},
-        Field{"pc.sym_addr", make_source<&PCInfo::sym_addr>(info)},
-        /// Debug info
-        Field{"pc.source_file", make_source<&PCInfo::source_file>(info)},
-        Field{"pc.func_name", make_source<&PCInfo::func_name>(info)},
-        Field{"pc.func_lineno", make_source<&PCInfo::func_lineno>(info)},
-        Field{"pc.debug_info", make_source(addrs, get_debug_info)},
-        /// Names of functions, symbols, and files
-        Field{"source_files", lazy_writer([&] { return make_source(info_store.source_files); })},
-        Field{"object_files", lazy_writer([&] { return make_source(info_store.object_files); })},
-        Field{"sym_names", lazy_writer([&] { return make_source(info_store.sym_names); })},
-        Field{"func_names", lazy_writer([&] { return make_source(info_store.func_names); })},
-        Field{"events", make_source(events_, [&](EventRecord const& event) {
-                  return std::tuple{Field{"id", event.id},
-                                    Field{"type", event.type},
-                                    Field{"alloc_size", event.alloc_size},
-                                    Field{"alloc_ptr", event.alloc_ptr},
-                                    Field{"alloc_hint", event.alloc_hint},
-                                    Field{"trace",
-                                          make_source(event.trace,
-                                                      [&](Addr addr) {
-                                                          auto it = addr_index.find(addr);
-                                                          if (it != addr_index.end()) {
-                                                              return it->second;
-                                                          } else {
-                                                              fprintf(stderr,
-                                                                      "Cannot find address %llx\n",
-                                                                      (long long unsigned)addr);
-                                                              return (unsigned long)(-1);
-                                                          }
-                                                      })},
-                                    Field{"trace", make_source(event.trace, [&](Addr addr) {
-                                              auto it = addr_index.find(addr);
-                                              if (it != addr_index.end()) {
-                                                  return it->second;
-                                              } else {
-                                                  fprintf(stderr,
-                                                          "Cannot find address %llx\n",
-                                                          (long long unsigned)addr);
-                                                  return (unsigned long)(-1);
-                                              }
-                                          })}};
-              })});
-
-
-    fclose(file);
 }
 
 
@@ -447,7 +316,7 @@ void mem_profile::AllocCounter::dump_json(char const* filename) {
 /// Used to generate alloc hook table
 #include <mem_profile/dlsym.h>
 
-namespace mem_profile {
+namespace mp {
 malloc_t AllocHookTable::get_malloc() noexcept {
     if (malloc_ == nullptr) [[unlikely]] {
         malloc_ = dlsymLoadOrExitAs<malloc_t>(RTLD_NEXT, "malloc");
@@ -478,4 +347,4 @@ calloc_t AllocHookTable::get_calloc() noexcept {
     }
     return calloc_;
 }
-} // namespace mem_profile
+} // namespace mp

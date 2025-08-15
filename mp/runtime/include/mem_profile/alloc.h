@@ -28,9 +28,9 @@ extern "C" void* __libc_calloc(size_t n_members, size_t size);
 #define mperf_free __libc_free
 #define mperf_calloc __libc_calloc
 #else
-#define mperf_malloc ::mem_profile::ALLOC_HOOK_TABLE.get_malloc()
-#define mperf_realloc ::mem_profile::ALLOC_HOOK_TABLE.get_realloc()
-#define mperf_memalign ::mem_profile::ALLOC_HOOK_TABLE.get_memalign()
-#define mperf_free ::mem_profile::ALLOC_HOOK_TABLE.get_free()
-#define mperf_calloc ::mem_profile::ALLOC_HOOK_TABLE.get_calloc()
+#define mperf_malloc ::mp::ALLOC_HOOK_TABLE.get_malloc()
+#define mperf_realloc ::mp::ALLOC_HOOK_TABLE.get_realloc()
+#define mperf_memalign ::mp::ALLOC_HOOK_TABLE.get_memalign()
+#define mperf_free ::mp::ALLOC_HOOK_TABLE.get_free()
+#define mperf_calloc ::mp::ALLOC_HOOK_TABLE.get_calloc()
 #endif

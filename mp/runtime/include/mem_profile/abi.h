@@ -6,7 +6,7 @@
 /// Used for abi::__cxa_demangle, to demangle function names
 #include <cxxabi.h>
 
-namespace mem_profile {
+namespace mp {
     class NameDemangler {
         constexpr static size_t InitialBuffSize = 16384;
         std::string symbol_buff;
@@ -64,4 +64,4 @@ namespace mem_profile {
 
         ~NameDemangler() { mperf_free(name_buff); }
     };
-} // namespace mem_profile
+} // namespace mp

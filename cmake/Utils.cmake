@@ -23,7 +23,7 @@ function(mp_add_library name kind)
         arg
         "NO_GLOB_HEADERS"
         "ROOT;NAMESPACE"
-        "SRC_DIRS;SRC_FILES;DEPS;PRIVATE_DEPS;INCLUDE_DIRS;PRIVATE_INCLUDE_DIRS;COMPILE_OPTIONS;PRIVATE_COMPILE_OPTIONS;PRELUDE_HEADERS"
+        "SRC_DIRS;SRC_FILES;DEPS;PRIVATE_DEPS;INCLUDE_DIRS;PRIVATE_INCLUDE_DIRS;COMPILE_OPTIONS;COMPILE_FEATURES;PRIVATE_COMPILE_FEATURES;PRIVATE_COMPILE_OPTIONS;PRELUDE_HEADERS"
     )
     set(source_files)
     add_library(${name} ${kind})
@@ -82,6 +82,12 @@ function(mp_add_library name kind)
     endif()
     if(DEFINED arg_PRIVATE_COMPILE_OPTIONS)
         target_compile_options(${name} PRIVATE ${arg_PRIVATE_COMPILE_OPTIONS})
+    endif()
+    if(DEFINED arg_COMPILE_FEATURES)
+        target_compile_features(${name} ${public_kw} ${arg_COMPILE_FEATURES})
+    endif()
+    if(DEFINED arg_PRIVATE_COMPILE_FEATURES)
+        target_compile_features(${name} PRIVATE ${arg_PRIVATE_COMPILE_FEATURES})
     endif()
     if(DEFINED arg_PRELUDE_HEADERS)
         foreach(path IN LISTS arg_PRELUDE_HEADERS)

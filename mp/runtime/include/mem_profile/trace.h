@@ -8,14 +8,14 @@
 #include <string>
 #include <dlfcn.h>
 
-namespace mem_profile {
+namespace mp {
     extern backtrace_state* const BACKTRACE_STATE;
 
     inline void backtrace_print_error(void*, char const* msg, int errnum) {
         std::setbuf(stderr, nullptr);
         fwrite_msg(
             stderr,
-            "mem_profile::backtrace: Error obtaining backtrace. ");
+            "mp::backtrace: Error obtaining backtrace. ");
         fwrite_msg(stderr, msg);
         fwrite_msg(stderr, "\n");
     }
@@ -57,7 +57,7 @@ namespace mem_profile {
             std::setbuf(stderr, nullptr);
             fwrite_msg(
                 stderr,
-                "mem_profile::backtrace: Error obtaining backtrace. ");
+                "mp::backtrace: Error obtaining backtrace. ");
             fwrite_msg(stderr, msg);
             fwrite_msg(stderr, "\n");
         }
@@ -134,7 +134,7 @@ namespace mem_profile {
             std::setbuf(stderr, nullptr);
             fwrite_msg(
                 stderr,
-                "mem_profile::backtrace: call stack exceeded buffer size "
+                "mp::backtrace: call stack exceeded buffer size "
                 "Returning truncated backtrace.\n");
         }
 
@@ -173,8 +173,8 @@ namespace mem_profile {
                 }
                 return 0;
             },
-            mem_profile::fatal_error_callback,
+            mp::fatal_error_callback,
             nullptr);
     }
-} // namespace mem_profile
+} // namespace mp
 #endif

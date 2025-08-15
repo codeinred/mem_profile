@@ -13,7 +13,7 @@
 
 
 
-namespace mem_profile {
+namespace mp {
     /// Represents a function address, eg, one obtained from a backtrace
     using Addr = uintptr_t;
 
@@ -182,6 +182,10 @@ namespace mem_profile {
         AllocCounter(AllocCounter const&) = delete;
         AllocCounter(AllocCounter&&) = default;
 
+        std::vector<EventRecord> const& events() const noexcept {
+            return events_;
+        }
+
 
         void record_alloc(
             uint64_t id,
@@ -282,4 +286,4 @@ namespace mem_profile {
         /// Invokes generate_report()
         ~GlobalContext();
     };
-} // namespace mem_profile
+} // namespace mp

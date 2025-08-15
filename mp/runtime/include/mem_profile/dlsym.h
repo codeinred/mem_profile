@@ -6,7 +6,7 @@
 
 #include <mem_profile/io.h>
 
-namespace mem_profile {
+namespace mp {
     struct DLSymResult {
         void* addr;
         char const* error_msg;
@@ -56,4 +56,4 @@ namespace mem_profile {
     Func dlsymLoadOrExitAs(void* handle, char const* name) noexcept {
         return (Func)(dlsymLoadOrExit(handle, name));
     }
-} // namespace mem_profile
+} // namespace mp

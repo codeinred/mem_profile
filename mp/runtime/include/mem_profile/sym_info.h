@@ -13,7 +13,7 @@
 #include <dlfcn.h>
 
 
-namespace mem_profile {
+namespace mp {
     using Addr = uintptr_t;
 
     /// Attempts to construct a string_view from the given C string.
@@ -239,4 +239,4 @@ namespace mem_profile {
             //     &callback);
         }
     };
-} // namespace mem_profile
+} // namespace mp

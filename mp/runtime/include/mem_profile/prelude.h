@@ -12,7 +12,7 @@ using free_t = void (*)(void* ptr);
 using calloc_t = void* (*)(size_t n_members, size_t size);
 using ptrdiff_t = decltype((char*)(nullptr) - (char*)(nullptr));
 
-namespace mem_profile {
+namespace mp {
     /// Stores function pointers to malloc, realloc, memalign, free, and calloc
     /// The ALLOC_HOOK_TABLE is set to null initially, and then as functions are
     /// requested (eg, as someone calls ALLOC_HOOK_TABLE.get_malloc()), the
@@ -44,4 +44,4 @@ namespace mem_profile {
     /// These should be initialized to null initially. Once get_<func>() is
     /// called, the corresponding symbol will be found with dlsym and cached
     extern AllocHookTable ALLOC_HOOK_TABLE;
-} // namespace mem_profile
+} // namespace mp

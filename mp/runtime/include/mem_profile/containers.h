@@ -10,7 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace mem_profile {
+namespace mp {
     template <class T>
     using Opt = std::optional<T>;
 
@@ -439,4 +439,4 @@ namespace mem_profile {
     };
 
     using IDStore = UniqueIDStore;
-} // namespace mem_profile
+} // namespace mp

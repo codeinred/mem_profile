@@ -6,8 +6,8 @@
 ////////////////////////
 ////  IO functions  ////
 ////////////////////////
-namespace mem_profile {
+namespace mp {
     inline void fwrite_msg(FILE* file, std::string_view msg) noexcept {
         std::fwrite(msg.data(), 1, msg.size(), file);
     }
-} // namespace mem_profile
+} // namespace mp

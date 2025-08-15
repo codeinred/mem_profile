@@ -24,9 +24,7 @@ clang_path:
     @echo "clang_cxx={{clang_cxx}}"
 
 config:
-    cmake -B build -G Ninja \
-        -DCMAKE_CXX_COMPILER={{clang_cxx}} \
-        -DCMAKE_C_COMPILER={{clang_cc}}
+    cmake -B build -G Ninja
 
 build: config
     cmake --build build

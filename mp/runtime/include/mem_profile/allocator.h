@@ -9,7 +9,7 @@
 #include <mem_profile/prelude.h>
 #include <type_traits>
 
-namespace mem_profile {
+namespace mp {
     template <class T>
     struct allocator {
         using value_type = T;
@@ -36,4 +36,4 @@ namespace mem_profile {
             return std::numeric_limits<size_t>::max() / sizeof(T);
         }
     };
-} // namespace mem_profile
+} // namespace mp
