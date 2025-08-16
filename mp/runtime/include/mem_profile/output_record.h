@@ -115,17 +115,28 @@ struct output_frame_table {
 
     /// Source file corresponding to program counter (index into strtab)
     std::vector<str_index_t> file;
+
     /// Function name corresponding to program counter (index into strtab)
     std::vector<str_index_t> func;
+
     /// Symbol name corresponding to program counter (index into strtab)
     //std::vector<size_t> pc_sym_name;
     /// Source File Line Number corresponding to program counter. 0 if missing
-    std::vector<u32>         line;
+    std::vector<u32> line;
+
     /// Soruce File Columnn Number corresponding to program counter. 0 if missing
-    std::vector<u32>         column;
+    std::vector<u32> column;
 
     /// true if the given frame is inline. 0 if false, 1 if true
     std::vector<u8> is_inline;
+
+    /// Get the program counter for the given entry
+    addr_t get_pc(size_t i) { return pc[i]; }
+
+    /// Get the number of frames for the i-th program counter
+    /// If inlining occurs, a program counter may have more than one associated
+    /// frame.
+    size_t frame_count(size_t i) { return offsets[i + 1] - offsets[i]; }
 
     output_frame_table() = default;
     output_frame_table(string_table&                                  strtab,
@@ -136,10 +147,11 @@ struct output_frame_table {
 
 
 struct output_record {
+    /// Holds entries in the stacktrace.
     output_frame_table frame_table;
 
     /// Vector of events
-    std::vector<output_event> events;
+    std::vector<output_event> event_table;
 
     /// String table
     std::vector<std::string> strtab;

@@ -60,7 +60,7 @@ template <> struct glz::meta<mp::output_record> {
     static constexpr auto value = glz::object(
         //
         MP_GLZ_ENTRY(mp::output_record, frame_table),
-        MP_GLZ_ENTRY(mp::output_record, events),
+        MP_GLZ_ENTRY(mp::output_record, event_table),
         MP_GLZ_ENTRY(mp::output_record, strtab)
         //
     );
