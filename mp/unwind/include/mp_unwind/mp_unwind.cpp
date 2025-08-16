@@ -95,9 +95,9 @@ size_t mp_extract_events(size_t           max_events,
         = sizeof(_mp_frame_information) / sizeof(ull_t);
 
     size_t event_i = 0;
-    for (int i = 0; i < spp_count - 1; i++) {
-        unw_word_t frame_end   = spp[i + 1];
-        unw_word_t frame_start = spp[i];
+    for (size_t spp_i = 0; spp_i < spp_count - 1; spp_i++) {
+        unw_word_t frame_end   = spp[spp_i + 1];
+        unw_word_t frame_start = spp[spp_i];
 
         ull_t const* frame_start_ptr = (ull_t const*)frame_start;
         ull_t const* frame_end_ptr   = (ull_t const*)frame_end;
@@ -118,6 +118,7 @@ size_t mp_extract_events(size_t           max_events,
                     if (event_i == max_events) return event_i;
 
                     event_buffer[event_i++] = {
+                        spp_i,
                         info.call_count,
                         info.this_size,
                         (uintptr_t)info.this_ptr,

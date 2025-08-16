@@ -4,13 +4,13 @@
 ////  Prelude  ////
 ///////////////////
 
-using size_t = decltype(sizeof(0));
-using malloc_t = void* (*)(size_t);
-using realloc_t = void* (*)(void*, size_t);
+using size_t     = decltype(sizeof(0));
+using malloc_t   = void* (*)(size_t);
+using realloc_t  = void* (*)(void*, size_t);
 using memalign_t = void* (*)(size_t alignment, size_t size);
-using free_t = void (*)(void* ptr);
-using calloc_t = void* (*)(size_t n_members, size_t size);
-using ptrdiff_t = decltype((char*)(nullptr) - (char*)(nullptr));
+using free_t     = void (*)(void* ptr);
+using calloc_t   = void* (*)(size_t n_members, size_t size);
+using ptrdiff_t  = decltype((char*)(nullptr) - (char*)(nullptr));
 
 namespace mp {
 /// Stores function pointers to malloc, realloc, memalign, free, and calloc
@@ -39,9 +39,15 @@ class alloc_hook_table {
     calloc_t   get_calloc() noexcept;
 };
 
-    /// This should be initialized first, before any of the includes
-    /// it should be the first global symbol that's initialized
-    /// These should be initialized to null initially. Once get_<func>() is
-    /// called, the corresponding symbol will be found with dlsym and cached
+/// This should be initialized first, before any of the includes
+/// it should be the first global symbol that's initialized
+/// These should be initialized to null initially. Once get_<func>() is
+/// called, the corresponding symbol will be found with dlsym and cached
 extern alloc_hook_table ALLOC_HOOK_TABLE;
+
+
+constexpr size_t BACKTRACE_BUFFER_SIZE = 1024;
+
+
+constexpr size_t OBJECT_BUFFER_SIZE = 1024;
 } // namespace mp

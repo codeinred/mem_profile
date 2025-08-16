@@ -22,9 +22,9 @@ alloc_hook_table ALLOC_HOOK_TABLE{};
 
 namespace mp {
 /// Counts the number of living local contexts
-std::atomic_int           LOCAL_CONTEXT_COUNT = 0;
+std::atomic_int            LOCAL_CONTEXT_COUNT = 0;
 /// true if tracing is enabled. See tracing_enabled
-std::atomic_bool          TRACING_ENABLED     = true;
+std::atomic_bool           TRACING_ENABLED     = true;
 /// Keeps track of global allocation counts. Local Contexts synchronize with
 /// the global context on their destruction
 global_context             GLOBAL_CONTEXT{};
@@ -59,7 +59,7 @@ inline bool tracing_enabled() noexcept { return TRACING_ENABLED.load(std::memory
 namespace {
 std::atomic_uint64_t EVENT_COUNTER = 0;
 }
-constexpr size_t BACKTRACE_BUFFER_SIZE = 1024;
+
 /// Records an allocation if tracing is enabled in the current context.
 ///
 /// This is implemented as a macro in order to avoid adding another function to
@@ -88,13 +88,31 @@ constexpr size_t BACKTRACE_BUFFER_SIZE = 1024;
                                                                                                    \
             mp::addr_t trace_buff[BACKTRACE_BUFFER_SIZE];                                          \
             size_t     trace_size = mp::mp_unwind(BACKTRACE_BUFFER_SIZE, trace_buff);              \
-            trace_view trace_view{trace_buff, trace_size};                                         \
             context.counter.record_alloc(EVENT_COUNTER++,                                          \
                                          _type,                                                    \
                                          _alloc_size,                                              \
                                          _alloc_ptr,                                               \
                                          _alloc_hint,                                              \
-                                         trace_view);                                              \
+                                         trace_view{trace_buff, trace_size});                      \
+        }                                                                                          \
+    }
+
+#define RECORD_ALLOC_WITH_OBJECT_INFO(_type, _alloc_size, _alloc_ptr, _alloc_hint)                 \
+    if (mp::tracing_enabled()) {                                                                   \
+        auto& context = mp::LOCAL_CONTEXT;                                                         \
+        if (context.nest_level == 0) {                                                             \
+            auto guard = context.inc_nested();                                                     \
+                                                                                                   \
+            mp::addr_t trace_buff[BACKTRACE_BUFFER_SIZE];                                          \
+            mp::addr_t spp_buff[BACKTRACE_BUFFER_SIZE];                                            \
+            size_t     trace_size = mp::mp_unwind(BACKTRACE_BUFFER_SIZE, trace_buff, spp_buff);    \
+            context.counter.record_alloc_with_events(EVENT_COUNTER++,                              \
+                                                     _type,                                        \
+                                                     _alloc_size,                                  \
+                                                     _alloc_ptr,                                   \
+                                                     _alloc_hint,                                  \
+                                                     trace_view{trace_buff, trace_size},           \
+                                                     trace_view{spp_buff, trace_size});            \
         }                                                                                          \
     }
 
@@ -136,7 +154,7 @@ extern "C" void* memalign(size_t alignment, size_t size) {
 
 
 extern "C" void free(void* ptr) {
-    RECORD_ALLOC(event_type::FREE, 0, ptr, nullptr);
+    RECORD_ALLOC_WITH_OBJECT_INFO(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
 
@@ -207,19 +225,19 @@ void* operator new[](size_t count, std::align_val_t al, const std::nothrow_t&) n
 /// Corresponding delete operators
 /// See: https://en.cppreference.com/w/cpp/memory/new/operator_delete
 void operator delete(void* ptr) noexcept {
-    RECORD_ALLOC(event_type::FREE, 0, ptr, nullptr);
+    RECORD_ALLOC_WITH_OBJECT_INFO(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
 void operator delete[](void* ptr) noexcept {
-    RECORD_ALLOC(event_type::FREE, 0, ptr, nullptr);
+    RECORD_ALLOC_WITH_OBJECT_INFO(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
 void operator delete(void* ptr, std::align_val_t al) noexcept {
-    RECORD_ALLOC(event_type::FREE, 0, ptr, nullptr);
+    RECORD_ALLOC_WITH_OBJECT_INFO(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
 void operator delete[](void* ptr, std::align_val_t al) noexcept {
-    RECORD_ALLOC(event_type::FREE, 0, ptr, nullptr);
+    RECORD_ALLOC_WITH_OBJECT_INFO(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
 

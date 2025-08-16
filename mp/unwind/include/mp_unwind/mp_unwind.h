@@ -5,10 +5,12 @@ namespace mp {
 
 
 struct event_info {
+    /// Index into the trace where the event was discovered
+    size_t trace_index;
     /// there is an atomic global event counter used to ensure
     /// that each event can be uniquely recorded and distinguished
     /// from other events. This is the id for that event
-    ull_t event_id;
+    ull_t  event_id;
 
     /// Size of object being acted on
     size_t object_size;

@@ -18,6 +18,31 @@ template <> struct glz::meta<mp::event_type> {
     static constexpr auto value = enumerate(FREE, ALLOC, REALLOC);
 };
 
+
+namespace mp {
+struct string_table {
+    std::vector<std::string>                               strtab;
+    ankerl::unordered_dense::map<std::string_view, size_t> lookup;
+
+
+    size_t size() const noexcept { return strtab.size(); }
+
+    /// Inserts the given entry into the string table. Returns the address
+    /// at which it was inserted.
+    size_t insert(std::string_view key) {
+        size_t index_if_new = size();
+
+        auto [it, is_new] = lookup.try_emplace(key, index_if_new);
+
+        // If it's not a new entry, return the index where it was found.
+        if (!is_new) return it->second;
+
+        strtab.emplace_back(key);
+        return index_if_new;
+    }
+};
+} // namespace mp
+
 namespace mp {
 
 struct output_object_info {
@@ -31,6 +56,23 @@ struct output_object_info {
     std::vector<size_t> size;
     /// Index into string table - name of the object's type
     std::vector<size_t> type;
+
+    output_object_info(string_table& strtab, std::vector<event_info> const& object_trace)
+      : trace_index(object_trace.size())
+      , object_id(object_trace.size())
+      , addr(object_trace.size())
+      , size(object_trace.size())
+      , type(object_trace.size()) {
+        size_t i = 0;
+        for (auto const& event : object_trace) {
+            trace_index[i] = event.trace_index;
+            object_id[i]   = event.event_id;
+            addr[i]        = event.object_ptr;
+            size[i]        = event.object_size;
+            type[i]        = strtab.insert(event.object_type_name);
+            ++i;
+        }
+    }
 };
 } // namespace mp
 
@@ -109,8 +151,8 @@ struct output_frame_table {
     /// Soruce File Columnn Number corresponding to program counter
     std::vector<u32>    column;
 
-    /// true if the given frame is inline
-    std::vector<bool> is_inline;
+    /// true if the given frame is inline. 0 if false, 1 if true
+    std::vector<u8> is_inline;
 };
 } // namespace mp
 
@@ -146,6 +188,13 @@ struct output_record {
 
     /// Vector of events
     std::vector<output_event> events;
+
+    bool events_sorted() const noexcept {
+        return std::is_sorted(
+            events.begin(),
+            events.end(),
+            [](output_event const& rhs, output_event const& lhs) { return rhs.id < lhs.id; });
+    }
 };
 } // namespace mp
 
@@ -164,32 +213,23 @@ template <> struct glz::meta<mp::output_record> {
 
 
 namespace mp {
-struct string_table {
-    std::vector<std::string>                               strtab;
-    ankerl::unordered_dense::map<std::string_view, size_t> lookup;
 
-
-    size_t size() const noexcept { return strtab.size(); }
-
-    /// Inserts the given entry into the string table. Returns the address
-    /// at which it was inserted.
-    size_t insert(std::string_view key) {
-        size_t index_if_new = size();
-
-        auto [it, is_new] = lookup.try_emplace(key, index_if_new);
-
-        // If it's not a new entry, return the index where it was found.
-        if (!is_new) return it->second;
-
-        strtab.emplace_back(key);
-        return index_if_new;
-    }
-};
 
 
 inline output_record make_output_record(alloc_counter const& source) {
     auto const& events      = source.events();
     size_t      events_size = events.size();
+
+    // Get events ordered by id
+    std::vector<size_t> event_ordering(events.size());
+    for (size_t i = 0; i < events.size(); i++) {
+        event_ordering[i] = i;
+    }
+    std::sort(event_ordering.begin(), event_ordering.end(), [&](size_t i, size_t j) -> bool {
+        return events[i].id < events[j].id;
+    });
+
+
 
     ankerl::unordered_dense::set<addr_t> pc_set;
     for (auto const& event : events) {
@@ -255,11 +295,11 @@ inline output_record make_output_record(alloc_counter const& source) {
         }
     }
 
-    record.strtab = std::move(strtab.strtab);
 
     record.events.resize(events_size);
     for (size_t i = 0; i < events_size; i++) {
-        auto const& e = events[i];
+        // Ensure that events are sequenced
+        auto const& e = events[event_ordering[i]];
 
         std::vector<size_t> pc_ids(e.trace.size());
         for (size_t i = 0; i < e.trace.size(); i++) {
@@ -274,7 +314,33 @@ inline output_record make_output_record(alloc_counter const& source) {
             uintptr_t(e.alloc_hint),
             std::move(pc_ids),
         };
+        if (!e.object_trace.empty()) {
+            record.events[i].object_info = output_object_info(strtab, e.object_trace);
+        }
     }
+
+    MP_ASSERT_EQ(record.events_sorted(),
+                 true,
+                 "Expected events to be ordered by event id by this stage");
+
+    {
+        // Because events are ordered by event id, that means that every
+        // free is sequenced after it's corresponding allocation. So we can
+        // record the sizes of all frees by running through all of the events
+
+        ankerl::unordered_dense::map<addr_t, size_t> alloc_sizes(record.events.size());
+
+        for (auto& event : record.events) {
+            auto& saved_size = alloc_sizes[event.alloc_addr];
+            if (event.type != event_type::FREE) {
+                saved_size = event.alloc_size; // Save the size if it's an allocation
+            } else {
+                event.alloc_size = saved_size; // Use the saved size if it's a free
+            }
+        }
+    }
+
+    record.strtab = std::move(strtab.strtab);
 
     return record;
 }

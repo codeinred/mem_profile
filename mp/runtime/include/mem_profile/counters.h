@@ -1,20 +1,20 @@
 #pragma once
 
+#include <climits> // Needed for CHAR_BIT
 #include <cstddef>
 #include <cstdint>
-// Needed for std::hash
-#include <utility>
-// Needed for CHAR_BIT
-#include <climits>
-// Needed for global_context
-#include <mutex>
+#include <mem_profile/prelude.h>
+#include <mutex>   // Needed for global_context
 #include <unordered_map>
+#include <utility> // Needed for std::hash
 #include <vector>
+
+#include <mp_unwind/mp_unwind.h>
 
 
 
 namespace mp {
-    /// Represents a function address, eg, one obtained from a backtrace
+/// Represents a function address, eg, one obtained from a backtrace
 using addr_t = uintptr_t;
 
 /// Increments a counter on construction, decrements it on destruction
@@ -76,9 +76,9 @@ struct flat_counts {
     }
 };
 
-    /// Represents a view on a backtrace
-    /// If you have a() -> b() -> c() (a calls b calls c),
-    /// pop() will return &a, then &b, then &c, then nullptr
+/// Represents a view on a backtrace
+/// If you have a() -> b() -> c() (a calls b calls c),
+/// pop() will return &a, then &b, then &c, then nullptr
 struct trace_view {
     addr_t const* data_;
     size_t        count;
@@ -103,7 +103,7 @@ struct trace_view {
     std::vector<addr_t> vec() const { return std::vector<addr_t>(data_, data_ + count); }
 };
 
-    /// Represents a call graph annotated with allocation counts
+/// Represents a call graph annotated with allocation counts
 struct call_graph : private alloc_count {
   public:
     call_graph()                  = default;
@@ -166,6 +166,9 @@ struct event_record {
 
     /// Trace of the event
     std::vector<addr_t> trace;
+
+    /// Records information about objects taking part in the trace
+    std::vector<event_info> object_trace;
 };
 
 class alloc_counter {
@@ -190,6 +193,33 @@ class alloc_counter {
             total_allocs_.record_alloc(alloc_size);
         }
         events_.push_back(event_record{id, type, alloc_size, alloc_ptr, alloc_hint, trace.vec()});
+    }
+
+
+    /// Records an allocation and extracts any events discovered on the stack
+    void record_alloc_with_events(uint64_t    id,
+                                  event_type  type,
+                                  size_t      alloc_size,
+                                  void const* alloc_ptr,
+                                  void const* alloc_hint,
+                                  trace_view  trace,
+                                  trace_view  spp) {
+        if (type != event_type::FREE) {
+            total_allocs_.record_alloc(alloc_size);
+        }
+        event_info event_buffer[OBJECT_BUFFER_SIZE];
+        size_t     event_count
+            = mp_extract_events(OBJECT_BUFFER_SIZE, event_buffer, spp.size(), spp.data());
+
+        events_.push_back(event_record{
+            id,
+            type,
+            alloc_size,
+            alloc_ptr,
+            alloc_hint,
+            trace.vec(),
+            std::vector<event_info>(event_buffer, event_buffer + event_count),
+        });
     }
 
 
@@ -229,7 +259,7 @@ class alloc_counter {
 };
 
 
-    /// Keeps track of allocations on a particular thread
+/// Keeps track of allocations on a particular thread
 struct local_context {
     /// Don't record allocations etc if this flag is nonzero
     /// Used so that the allocation counter's own internal allocations
