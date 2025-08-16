@@ -14,7 +14,17 @@ using u32 = uint32_t;
 using i64 = int64_t;
 using u64 = uint64_t;
 
-using ull_t = unsigned long long;
+using ull_t  = unsigned long long;
 using size_t = MP_SIZE_TYPE;
 
+/// Represents an address, eg a program counter
+using addr_t = uintptr_t;
+
+/// Index into a string table. This is very useful for serialization, where
+/// often the same strings (either a filename, or a function name, etc) appear
+/// multiple times.
+///
+/// In order to reduce the size of output files (such as `malloc_stats.json`),
+/// we place a string table at the end of the file.
+using str_index_t = size_t;
 } // namespace mp
