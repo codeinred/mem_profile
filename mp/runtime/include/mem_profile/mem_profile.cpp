@@ -297,7 +297,9 @@ void mp::alloc_counter::dump_json(char const* filename) {
 
     auto data = make_output_record(*this);
 
-    auto errc = glz::write_file_json(data, filename, std::string{});
+    constexpr glz::opts opts{.skip_null_members = false};
+
+    auto                errc = glz::write_file_json<opts>(data, filename, std::string{});
     if (errc) {
         std::string glz_error = glz::format_error(errc, std::string{});
         throw ERR("Error when dumping json - {}", glz_error);
