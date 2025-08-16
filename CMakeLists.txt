@@ -10,7 +10,10 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(MEM_PROFILE_BUILD_TOOLS "Build tools" ON)
-
+option(
+    MEM_PROFILE_SANITIZE_RUNTIME
+    "Turn on address sanitizer for the mem_profile runtime library"
+    OFF)
 
 if(UNIX)
     add_compile_options(-Wall -fcolor-diagnostics -g)
@@ -169,6 +172,11 @@ mp_add_library(
         ankerl::unordered_dense
 )
 target_compile_features(mp_runtime PRIVATE cxx_std_23)
+
+if(MEM_PROFILE_SANITIZE_RUNTIME)
+    target_compile_options(mp_runtime PRIVATE -fsanitize=address,undefined)
+    target_link_options(mp_runtime PRIVATE -fsanitize=address,undefined)
+endif()
 
 add_library(
     mp_build_with_plugin
