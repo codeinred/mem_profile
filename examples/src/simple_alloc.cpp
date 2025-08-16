@@ -4,7 +4,7 @@
 
 namespace my_ns {
 struct Inner {
-    ~Inner() { mp::mp_unwind_show_trace(); }
+    std::unique_ptr<int[]> u{new int[10]};
 };
 
 struct Parent : Inner {};
