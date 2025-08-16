@@ -290,28 +290,7 @@ global_context::~global_context() { generate_report(); }
 #include <mem_profile/sym_info.h>
 
 #include <mem_profile/output_record.h>
-
-
-namespace {
-/// Computes the sizes of all frees that took place, based on the size
-/// of the corresponding malloc
-///
-/// Assumes events are sorted by ID
-void match_allocs_and_frees(std::vector<event_record>& records) {
-    using ptr_t = void const*;
-    std::unordered_map<ptr_t, size_t> sizes;
-
-    for (auto& record : records) {
-        if (record.type == event_type::FREE) {
-            record.alloc_size = sizes[record.alloc_ptr];
-        } else {
-            sizes[record.alloc_ptr] = record.alloc_size;
-        }
-    }
-}
-} // namespace
-
-#include <glaze/glaze.hpp>
+#include <mem_profile/output_record_io.h>
 
 void mp::alloc_counter::dump_json(char const* filename) {
     using namespace mp;

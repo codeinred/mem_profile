@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <string_view>
 
-
+#include <mp_types/types.h>
 #include <mem_profile/abi.h>
 #include <mem_profile/containers.h>
 #include <mem_profile/trace.h>
@@ -14,7 +14,7 @@
 
 
 namespace mp {
-using addr_t = uintptr_t;
+
 
 /// Attempts to construct a string_view from the given C string.
 /// If the given C string is null, returns the given fallback message

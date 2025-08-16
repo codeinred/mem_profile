@@ -10,13 +10,10 @@
 #include <vector>
 
 #include <mp_unwind/mp_unwind.h>
-
+#include <mp_types/types.h>
 
 
 namespace mp {
-/// Represents a function address, eg, one obtained from a backtrace
-using addr_t = uintptr_t;
-
 /// Increments a counter on construction, decrements it on destruction
 /// Used to locally disable allocation recording (we don't want to record an
 /// allocation inside an allocation, as that can result in an infinite loop)

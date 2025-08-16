@@ -9,28 +9,24 @@
 #include <mp_error/error.h>
 #include <mp_types/types.h>
 
-#define MP_GLZ_ENTRY2(a, b) a, b
-
-#define MP_GLZ_ENTRY(type, name) #name, &type::name
-
-template <> struct glz::meta<mp::event_type> {
-    using enum mp::event_type;
-    static constexpr auto value = enumerate(FREE, ALLOC, REALLOC);
-};
-
 
 namespace mp {
+using ankerl::unordered_dense::map;
+
 struct string_table {
-    std::vector<std::string>                               strtab;
-    ankerl::unordered_dense::map<std::string_view, size_t> lookup;
+    std::vector<std::string>           strtab;
+    map<std::string_view, str_index_t> lookup;
+    // Some strings come in as c strings with static lifetime.
+    // This provides a cache to look up those entries quickly.
+    map<addr_t, str_index_t>           cstr_lookup;
 
 
     size_t size() const noexcept { return strtab.size(); }
 
     /// Inserts the given entry into the string table. Returns the address
     /// at which it was inserted.
-    size_t insert(std::string_view key) {
-        size_t index_if_new = size();
+    str_index_t insert(std::string_view key) {
+        str_index_t index_if_new = size();
 
         auto [it, is_new] = lookup.try_emplace(key, index_if_new);
 
@@ -40,56 +36,46 @@ struct string_table {
         strtab.emplace_back(key);
         return index_if_new;
     }
-};
-} // namespace mp
 
-namespace mp {
+    /// Quickly look up and insert a c string. This is useful for, eg, object typenames
+    /// collected while scanning the stack.
+    str_index_t insert_cstr(char const* key) {
+        constexpr size_t npos = ~size_t();
+
+        addr_t cstr_addr = addr_t(key);
+
+        auto [it, is_new] = cstr_lookup.try_emplace(cstr_addr, npos);
+
+        // fast path! If it's not a new entry, return the index where it was found.
+        if (!is_new) return it->second;
+
+        // Insert as regular string_view
+        auto result = insert(key);
+
+        // Ensure that our cstr_lookup knows about the correct index
+        it->second = result;
+
+        return result;
+    }
+};
+
 
 struct output_object_info {
     // Index into event stacktrace
-    std::vector<size_t> trace_index;
+    std::vector<size_t>      trace_index;
     // id of object being destroyed (unique over lifetime of program)
-    std::vector<u64>    object_id;
+    std::vector<u64>         object_id;
     // address of the object at time of destruction(`this` pointer)
-    std::vector<addr_t> addr;
-    // sizeo of object being destroyed
-    std::vector<size_t> size;
+    std::vector<addr_t>      addr;
+    // size of object being destroyed
+    std::vector<size_t>      size;
     /// Index into string table - name of the object's type
-    std::vector<size_t> type;
+    std::vector<str_index_t> type;
 
-    output_object_info(string_table& strtab, std::vector<event_info> const& object_trace)
-      : trace_index(object_trace.size())
-      , object_id(object_trace.size())
-      , addr(object_trace.size())
-      , size(object_trace.size())
-      , type(object_trace.size()) {
-        size_t i = 0;
-        for (auto const& event : object_trace) {
-            trace_index[i] = event.trace_index;
-            object_id[i]   = event.event_id;
-            addr[i]        = event.object_ptr;
-            size[i]        = event.object_size;
-            type[i]        = strtab.insert(event.object_type_name);
-            ++i;
-        }
-    }
-};
-} // namespace mp
-
-template <> struct glz::meta<mp::output_object_info> {
-    using T                     = mp::output_object_info;
-    constexpr static auto value = object(
-        //
-        MP_GLZ_ENTRY(mp::output_object_info, trace_index),
-        MP_GLZ_ENTRY(mp::output_object_info, object_id),
-        MP_GLZ_ENTRY(mp::output_object_info, addr),
-        MP_GLZ_ENTRY(mp::output_object_info, size),
-        MP_GLZ_ENTRY(mp::output_object_info, type)
-        //
-    );
+    output_object_info(string_table& strtab, std::vector<event_info> const& object_trace);
 };
 
-namespace mp {
+
 struct output_event {
     /// A unique 64-bit stamp that can be used to order events
     /// chronologically. Also uniquely identifies an event.
@@ -113,25 +99,12 @@ struct output_event {
 
     std::optional<output_object_info> object_info;
 };
-} // namespace mp
 
-template <> struct glz::meta<mp::output_event> {
-    using T                     = mp::output_event;
-    constexpr static auto value = object(
-        //
-        MP_GLZ_ENTRY(mp::output_event, id),
-        MP_GLZ_ENTRY(mp::output_event, type),
-        MP_GLZ_ENTRY(mp::output_event, alloc_size),
-        MP_GLZ_ENTRY(mp::output_event, alloc_addr),
-        MP_GLZ_ENTRY(mp::output_event, alloc_hint),
-        MP_GLZ_ENTRY(mp::output_event, pc_id),
-        MP_GLZ_ENTRY(mp::output_event, object_info)
-        //
-    );
-};
 
-namespace mp {
 struct output_frame_table {
+    /// Table of program counters
+    std::vector<addr_t> pc;
+
     /// Each program counter corresponds to 1 or more frames.
     /// (If a function is inlined, a program counter will correspond to more than
     /// one frame)
@@ -141,207 +114,64 @@ struct output_frame_table {
 
 
     /// Source file corresponding to program counter (index into strtab)
-    std::vector<size_t> file;
+    std::vector<str_index_t> file;
     /// Function name corresponding to program counter (index into strtab)
-    std::vector<size_t> func;
+    std::vector<str_index_t> func;
     /// Symbol name corresponding to program counter (index into strtab)
     //std::vector<size_t> pc_sym_name;
-    /// Source File Line Number corresponding to program counter
-    std::vector<u32>    line;
-    /// Soruce File Columnn Number corresponding to program counter
-    std::vector<u32>    column;
+    /// Source File Line Number corresponding to program counter. 0 if missing
+    std::vector<u32>         line;
+    /// Soruce File Columnn Number corresponding to program counter. 0 if missing
+    std::vector<u32>         column;
 
     /// true if the given frame is inline. 0 if false, 1 if true
     std::vector<u8> is_inline;
-};
-} // namespace mp
 
-template <> struct glz::meta<mp::output_frame_table> {
-    using T                     = mp::output_frame_table;
-    constexpr static auto value = object(
-        //
-        MP_GLZ_ENTRY(mp::output_frame_table, offsets),
-        MP_GLZ_ENTRY(mp::output_frame_table, file),
-        MP_GLZ_ENTRY(mp::output_frame_table, func),
-        MP_GLZ_ENTRY(mp::output_frame_table, line),
-        MP_GLZ_ENTRY(mp::output_frame_table, column),
-        MP_GLZ_ENTRY(mp::output_frame_table, is_inline)
-        //
-    );
+    output_frame_table() = default;
+    output_frame_table(string_table&                                  strtab,
+                       std::vector<addr_t>                            pcs,
+                       std::vector<cpptrace::stacktrace_frame> const& frames);
 };
 
-namespace mp {
 
-struct file_loc {
-    u32 lineno{};
-    u32 colno{};
-};
 
 struct output_record {
-    /// String table
-    std::vector<std::string> strtab;
-
-    /// Table of program counters
-    std::vector<addr_t> pc;
-
     output_frame_table frame_table;
 
     /// Vector of events
     std::vector<output_event> events;
 
-    bool events_sorted() const noexcept {
-        return std::is_sorted(
-            events.begin(),
-            events.end(),
-            [](output_event const& rhs, output_event const& lhs) { return rhs.id < lhs.id; });
-    }
-};
-} // namespace mp
-
-
-template <> struct glz::meta<mp::output_record> {
-    using T                     = mp::output_record;
-    static constexpr auto value = glz::object(
-        //
-        MP_GLZ_ENTRY(mp::output_record, strtab),
-        MP_GLZ_ENTRY(mp::output_record, pc),
-        MP_GLZ_ENTRY(mp::output_record, frame_table),
-        MP_GLZ_ENTRY(mp::output_record, events)
-        //
-    );
+    /// String table
+    std::vector<std::string> strtab;
 };
 
+/// Sanity check: we expect that the number of non-inline frames should match
+/// the number of program counters
+auto run_sanity_check_on_frames(size_t                                         pc_count,
+                                std::vector<cpptrace::stacktrace_frame> const& frames) -> void;
 
-namespace mp {
+/// Given an event_record, compute an ordering that sequences the event record,
+/// such that events are ordered by their id.
+auto compute_event_ordering(std::vector<event_record> const& events) -> std::vector<size_t>;
 
+// Check if the vector of output events is sorted
+auto is_events_sorted(std::vector<output_event> const& events) -> bool;
 
+/// Fill in the size of 'FREE' events, based on the size of the corresponding allocation
+auto compute_free_sizes(std::vector<output_event>& output_events) -> void;
 
-inline output_record make_output_record(alloc_counter const& source) {
-    auto const& events      = source.events();
-    size_t      events_size = events.size();
+auto compute_output_events(string_table&                    strtab,
+                           std::vector<event_record> const& events,
+                           map<addr_t, size_t> const& pc_ids_lookup) -> std::vector<output_event>;
 
-    // Get events ordered by id
-    std::vector<size_t> event_ordering(events.size());
-    for (size_t i = 0; i < events.size(); i++) {
-        event_ordering[i] = i;
-    }
-    std::sort(event_ordering.begin(), event_ordering.end(), [&](size_t i, size_t j) -> bool {
-        return events[i].id < events[j].id;
-    });
+/// Computes a sorted list of all program counters that appear in the event records
+auto collect_pcs(std::vector<event_record> const& events) -> std::vector<addr_t>;
 
+/// Given a table of program counters, computes a mapping of each program counter
+/// to it's index in the table.
+auto compute_pc_lookup(std::vector<addr_t> const& pcs) -> map<addr_t, size_t>;
 
-
-    ankerl::unordered_dense::set<addr_t> pc_set;
-    for (auto const& event : events) {
-        pc_set.insert(event.trace.begin(), event.trace.end());
-    }
-    std::vector<addr_t> pcs(pc_set.begin(), pc_set.end());
-    std::sort(pcs.data(), pcs.data() + pcs.size());
-    ankerl::unordered_dense::map<addr_t, size_t> pc_ids_lookup(pcs.size() * 2);
-
-    for (size_t i = 0; i < pcs.size(); i++) {
-        pc_ids_lookup[pcs[i]] = i;
-    }
-
-    // Get the trace
-    auto trace = [&]() -> cpptrace::stacktrace {
-        cpptrace::raw_trace trace;
-        trace.frames = pcs;
-        return trace.resolve();
-    }();
-    trace.print();
-    size_t trace_size = trace.frames.size();
-
-    // SANITY CHECK: ensure that the number of non-inline frames
-    // matches the number of program counters
-    {
-        size_t non_inline_frame_count = 0;
-        for (auto const& frame : trace.frames) {
-            non_inline_frame_count += !frame.is_inline;
-        }
-
-        MP_ASSERT_EQ(non_inline_frame_count,
-                     pcs.size(),
-                     "The number of non_inline frames must match the number of program counters");
-    }
-
-
-    output_record record;
-
-    record.pc = pcs;
-
-    record.frame_table.offsets.resize(record.pc.size() + 1);
-    record.frame_table.column.resize(trace_size);
-    record.frame_table.line.resize(trace_size);
-    record.frame_table.func.resize(trace_size);
-    record.frame_table.file.resize(trace_size);
-    record.frame_table.is_inline.resize(trace_size);
-
-
-    string_table strtab;
-
-    {
-        size_t pc_i = 0;
-        for (size_t i = 0; i < trace_size; i++) {
-            auto const& frame = trace.frames[i];
-            if (!frame.is_inline) {
-                record.frame_table.offsets[++pc_i] = i + 1;
-            }
-            record.frame_table.column[i]    = frame.column.value_or(0);
-            record.frame_table.line[i]      = frame.line.value_or(0);
-            record.frame_table.file[i]      = strtab.insert(frame.filename);
-            record.frame_table.func[i]      = strtab.insert(frame.symbol);
-            record.frame_table.is_inline[i] = frame.is_inline;
-        }
-    }
-
-
-    record.events.resize(events_size);
-    for (size_t i = 0; i < events_size; i++) {
-        // Ensure that events are sequenced
-        auto const& e = events[event_ordering[i]];
-
-        std::vector<size_t> pc_ids(e.trace.size());
-        for (size_t i = 0; i < e.trace.size(); i++) {
-            pc_ids[i] = pc_ids_lookup[e.trace[i]];
-        }
-
-        record.events[i] = output_event{
-            e.id,
-            e.type,
-            e.alloc_size,
-            uintptr_t(e.alloc_ptr),
-            uintptr_t(e.alloc_hint),
-            std::move(pc_ids),
-        };
-        if (!e.object_trace.empty()) {
-            record.events[i].object_info = output_object_info(strtab, e.object_trace);
-        }
-    }
-
-    MP_ASSERT_EQ(record.events_sorted(),
-                 true,
-                 "Expected events to be ordered by event id by this stage");
-
-    {
-        // Because events are ordered by event id, that means that every
-        // free is sequenced after it's corresponding allocation. So we can
-        // record the sizes of all frees by running through all of the events
-
-        ankerl::unordered_dense::map<addr_t, size_t> alloc_sizes(record.events.size());
-
-        for (auto& event : record.events) {
-            auto& saved_size = alloc_sizes[event.alloc_addr];
-            if (event.type != event_type::FREE) {
-                saved_size = event.alloc_size; // Save the size if it's an allocation
-            } else {
-                event.alloc_size = saved_size; // Use the saved size if it's a free
-            }
-        }
-    }
-
-    record.strtab = std::move(strtab.strtab);
-
-    return record;
-}
+/// Given the allocations that have occurred over the lifetime of the program,
+/// produce an `output_record` - a compact serializable representation of that data
+auto make_output_record(alloc_counter const& source) -> output_record;
 } // namespace mp
