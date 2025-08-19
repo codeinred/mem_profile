@@ -67,5 +67,8 @@ build_example: install
 run_example example: build_example
     examples/build/{{example}}
 
+analyze_stats input_file:
+    uv run --project stats_reader print-objects {{input_file}}
+
 clean:
     rm -rf build install examples/build

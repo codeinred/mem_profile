@@ -4,12 +4,8 @@ Python dataclasses for memory profiler output_record structure.
 Replicates the C++ structures defined in mem_profile/output_record.h
 """
 
-import json
 from dataclasses import dataclass
 from enum import Enum
-from pathlib import Path
-import cattrs
-import pprint
 
 # Type aliases matching C++ types
 addr_t = int  # uintptr_t
@@ -126,7 +122,6 @@ class OutputRecord:
     # Centralized string storage
     strtab: list[str]
 
-
     def get_loc(self, pc_id: int) -> list[str]:
         offsets = self.frame_table.offsets
         sl = slice(offsets[pc_id], offsets[pc_id+1])
@@ -139,7 +134,6 @@ class OutputRecord:
         return paths
 
 
-
 @dataclass
 class ObjectTree:
     type_name: str
@@ -147,106 +141,4 @@ class ObjectTree:
     object_id: int
     direct_size: size_t
     allocated_bytes: size_t
-
     children: list["ObjectTree"]
-
-
-def get_objects(record: OutputRecord) -> dict[int, ObjectTree]:
-    objects: dict[int, ObjectTree] = {}
-
-    for event in record.event_table:
-        object_info = event.object_info
-        children = []
-        if object_info is not None:
-            children = []
-            for object_id, addr, size, trace_index, type in zip(
-                object_info.object_id,
-                object_info.addr,
-                object_info.size,
-                object_info.trace_index,
-                object_info.type,
-            ):
-                obj: ObjectTree
-
-                if object_id not in objects:
-                    location = record.get_loc(event.pc_id[trace_index])
-
-                    obj = ObjectTree(
-                        record.strtab[type],
-                        location,
-                        object_id,
-                        size,
-                        event.alloc_size,
-                        children
-                    )
-                    objects[object_id] = obj
-                else:
-                    obj = objects[object_id]
-                    obj.allocated_bytes += event.alloc_size
-                    obj.children.extend(children)
-                children = [obj]
-    return objects
-
-
-# Create converter with custom hooks
-_converter = cattrs.Converter()
-
-
-# Custom converter for OutputFrameTable to handle is_inline conversion
-def _structure_frame_table(data: dict, _) -> OutputFrameTable:
-    """Convert JSON dict to OutputFrameTable, converting is_inline from int to bool"""
-    data = data.copy()
-    data["is_inline"] = [bool(x) for x in data["is_inline"]]
-    return cattrs.structure(data, OutputFrameTable)
-
-
-_converter.register_structure_hook(OutputFrameTable, _structure_frame_table)
-
-
-def load_from_file(filepath: str | Path) -> OutputRecord:
-    """
-    Load memory profiler data from a malloc_stats.json file.
-
-    Args:
-        filepath: Path to the malloc_stats.json file
-
-    Returns:
-        OutputRecord containing the parsed profiler data
-
-    Raises:
-        FileNotFoundError: If the file doesn't exist
-        json.JSONDecodeError: If the file contains invalid JSON
-        cattrs.StructureError: If the JSON structure doesn't match expected format
-    """
-    with open(filepath) as f:
-        data = json.load(f)
-    return _converter.structure(data, OutputRecord)
-
-
-def load_from_dict(data: dict) -> OutputRecord:
-    """
-    Load memory profiler data from a dictionary.
-
-    Args:
-        data: Dictionary containing the profiler data
-
-    Returns:
-        OutputRecord containing the parsed profiler data
-
-    Raises:
-        cattrs.StructureError: If the data structure doesn't match expected format
-    """
-    return _converter.structure(data, OutputRecord)
-
-
-if __name__ == "__main__":
-    record: OutputRecord = load_from_file("malloc_stats.json")
-
-    objects = get_objects(record)
-
-    object_list = list(objects.values())
-
-    object_list.sort(key=lambda x: x.direct_size, reverse=True)
-
-    for obj in object_list:
-        pprint.pprint(obj, compact=True)
