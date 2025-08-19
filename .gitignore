@@ -3,3 +3,4 @@ build/
 a.out
 *.dSYM
 install/
+malloc_stats.json
