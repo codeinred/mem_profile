@@ -80,6 +80,10 @@ class OutputFrameTable:
 
     # Program counter addresses
     pc: list[addr_t]
+    # Object path indices into string table
+    object_path: list[str_index_t]
+    # Address within the object
+    object_address: list[addr_t]
     # Frame boundary offsets (length = pc.length + 1)
     offsets: list[size_t]
     # Source file indices into string table
