@@ -5,21 +5,21 @@ namespace mp {
 output_record make_output_record(alloc_counter const& source) {
     auto const& events = source.events();
 
-    auto pcs           = collect_pcs(events);
-    auto pc_ids_lookup = compute_pc_lookup(pcs);
+    auto raw_trace = cpptrace::raw_trace{collect_pcs(events)};
 
-    // Get the trace
-    auto trace = [&]() -> cpptrace::stacktrace {
-        cpptrace::raw_trace trace;
-        trace.frames = pcs;
-        return trace.resolve();
-    }();
-    trace.print();
+    auto object_trace  = raw_trace.resolve_object_trace();
+    auto stack_trace   = raw_trace.resolve();
+    auto pc_ids_lookup = compute_pc_lookup(raw_trace.frames);
+
+    stack_trace.print();
 
     string_table strtab;
 
     return output_record{
-        output_frame_table(strtab, pcs, trace.frames),
+        output_frame_table(strtab,
+                           std::move(raw_trace.frames),
+                           object_trace.frames,
+                           stack_trace.frames),
         compute_output_events(strtab, events, pc_ids_lookup),
         std::move(strtab.strtab),
     };
@@ -28,21 +28,32 @@ output_record make_output_record(alloc_counter const& source) {
 
 output_frame_table::output_frame_table(string_table&                                  strtab,
                                        std::vector<addr_t>                            pcs,
-                                       std::vector<cpptrace::stacktrace_frame> const& frames)
-  : pc(pcs)
+                                       std::vector<cpptrace::object_frame> const&     object_frames,
+                                       std::vector<cpptrace::stacktrace_frame> const& stack_frames)
+  : pc(std::move(pcs))
+  , object_path(pc.size())
+  , object_address(pc.size())
   , offsets(pc.size() + 1)
-  , file(frames.size())
-  , func(frames.size())
-  , line(frames.size())
-  , column(frames.size())
-  , is_inline(frames.size()) {
-    run_sanity_check_on_frames(pc.size(), frames);
+  , file(stack_frames.size())
+  , func(stack_frames.size())
+  , line(stack_frames.size())
+  , column(stack_frames.size())
+  , is_inline(stack_frames.size()) {
+    run_sanity_check_on_frames(pc.size(), stack_frames);
 
-    size_t trace_size = frames.size();
+    MP_ASSERT_EQ(pc.size(),
+                 object_frames.size(),
+                 "Expected 1-to-1 relation betwween object frames and program counters");
 
-    size_t pc_i = 0;
+    for (size_t i = 0; i < pc.size(); i++) {
+        object_path[i]    = strtab.insert(object_frames[i].object_path);
+        object_address[i] = object_frames[i].object_address;
+    }
+
+    size_t trace_size = stack_frames.size();
+    size_t pc_i       = 0;
     for (size_t i = 0; i < trace_size; i++) {
-        auto const& frame = frames[i];
+        auto const& frame = stack_frames[i];
         if (!frame.is_inline) {
             offsets[++pc_i] = i + 1;
         }

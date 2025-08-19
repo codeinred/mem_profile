@@ -105,6 +105,14 @@ struct output_frame_table {
     /// Table of program counters
     std::vector<addr_t> pc;
 
+    /// Object path
+    std::vector<str_index_t> object_path;
+
+    /// Address within the object
+    std::vector<addr_t> object_address;
+
+
+
     /// Each program counter corresponds to 1 or more frames.
     /// (If a function is inlined, a program counter will correspond to more than
     /// one frame)
@@ -141,7 +149,8 @@ struct output_frame_table {
     output_frame_table() = default;
     output_frame_table(string_table&                                  strtab,
                        std::vector<addr_t>                            pcs,
-                       std::vector<cpptrace::stacktrace_frame> const& frames);
+                       std::vector<cpptrace::object_frame> const&     object_frames,
+                       std::vector<cpptrace::stacktrace_frame> const& stack_frames);
 };
 
 
