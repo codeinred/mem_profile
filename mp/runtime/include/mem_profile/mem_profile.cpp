@@ -2,6 +2,8 @@
 ////  Counters and global contexts  ////
 ////////////////////////////////////////
 #include <mem_profile/prelude.h>
+#include <mp_core/export.h>
+
 
 namespace mp {
 alloc_hook_table ALLOC_HOOK_TABLE{};
@@ -102,6 +104,7 @@ std::atomic_uint64_t EVENT_COUNTER = 0;
         auto& context = mp::LOCAL_CONTEXT;                                                         \
         if (context.nest_level == 0) {                                                             \
             auto guard = context.inc_nested();                                                     \
+            mp_unwind_show_trace();                                                                \
                                                                                                    \
             mp::addr_t trace_buff[BACKTRACE_BUFFER_SIZE];                                          \
             mp::addr_t spp_buff[BACKTRACE_BUFFER_SIZE];                                            \
@@ -119,7 +122,7 @@ std::atomic_uint64_t EVENT_COUNTER = 0;
 
 using namespace mp;
 
-extern "C" void* malloc(size_t size) {
+extern "C" MP_EXPORT void* malloc(size_t size) {
     auto result = mperf_malloc(size);
 
     RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
@@ -127,7 +130,7 @@ extern "C" void* malloc(size_t size) {
     return result;
 }
 
-extern "C" void* calloc(size_t n, size_t size) {
+extern "C" MP_EXPORT void* calloc(size_t n, size_t size) {
     auto result = mperf_calloc(n, size);
 
     RECORD_ALLOC(event_type::ALLOC, n * size, result, nullptr);
@@ -135,7 +138,7 @@ extern "C" void* calloc(size_t n, size_t size) {
     return result;
 }
 
-extern "C" void* realloc(void* hint, size_t n) {
+extern "C" MP_EXPORT void* realloc(void* hint, size_t n) {
     auto result = mperf_realloc(hint, n);
 
     RECORD_ALLOC(event_type::ALLOC, n, result, hint);
@@ -144,7 +147,7 @@ extern "C" void* realloc(void* hint, size_t n) {
 }
 
 
-extern "C" void* memalign(size_t alignment, size_t size) {
+extern "C" MP_EXPORT void* memalign(size_t alignment, size_t size) {
     auto result = mperf_memalign(alignment, size);
 
     RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
@@ -153,7 +156,7 @@ extern "C" void* memalign(size_t alignment, size_t size) {
 }
 
 
-extern "C" void free(void* ptr) {
+extern "C" MP_EXPORT void free(void* ptr) {
     RECORD_ALLOC_WITH_OBJECT_INFO(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
@@ -184,38 +187,38 @@ extern "C" void free(void* ptr) {
     }
 
 
-void* operator new(size_t count) { ALLOCATE_OR_THROW(count, mperf_malloc(count)); }
+MP_EXPORT void* operator new(size_t count) { ALLOCATE_OR_THROW(count, mperf_malloc(count)); }
 
-void* operator new[](size_t count) { ALLOCATE_OR_THROW(count, mperf_malloc(count)); }
+MP_EXPORT void* operator new[](size_t count) { ALLOCATE_OR_THROW(count, mperf_malloc(count)); }
 
-void* operator new(size_t count, std::align_val_t al) {
+MP_EXPORT void* operator new(size_t count, std::align_val_t al) {
     ALLOCATE_OR_THROW(count, mperf_memalign(count, (size_t)al));
 }
 
-void* operator new[](size_t count, std::align_val_t al) {
+MP_EXPORT void* operator new[](size_t count, std::align_val_t al) {
     ALLOCATE_OR_THROW(count, mperf_memalign(count, (size_t)al));
 }
 
 
-void* operator new(size_t count, const std::nothrow_t&) noexcept {
+MP_EXPORT void* operator new(size_t count, const std::nothrow_t&) noexcept {
     auto result = mperf_malloc(count);
     RECORD_ALLOC(event_type::ALLOC, count, result, nullptr);
     return result;
 }
 
-void* operator new[](size_t count, const std::nothrow_t&) noexcept {
+MP_EXPORT void* operator new[](size_t count, const std::nothrow_t&) noexcept {
     auto result = mperf_malloc(count);
     RECORD_ALLOC(event_type::ALLOC, count, result, nullptr);
     return result;
 }
 
-void* operator new(size_t count, std::align_val_t al, const std::nothrow_t&) noexcept {
+MP_EXPORT void* operator new(size_t count, std::align_val_t al, const std::nothrow_t&) noexcept {
     auto result = mperf_memalign(count, (size_t)al);
     RECORD_ALLOC(event_type::ALLOC, count, result, nullptr);
     return result;
 }
 
-void* operator new[](size_t count, std::align_val_t al, const std::nothrow_t&) noexcept {
+MP_EXPORT void* operator new[](size_t count, std::align_val_t al, const std::nothrow_t&) noexcept {
 
     auto result = mperf_memalign(count, (size_t)al);
     RECORD_ALLOC(event_type::ALLOC, count, result, nullptr);
@@ -224,19 +227,19 @@ void* operator new[](size_t count, std::align_val_t al, const std::nothrow_t&) n
 
 /// Corresponding delete operators
 /// See: https://en.cppreference.com/w/cpp/memory/new/operator_delete
-void operator delete(void* ptr) noexcept {
+MP_EXPORT void operator delete(void* ptr) noexcept {
     RECORD_ALLOC_WITH_OBJECT_INFO(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
-void operator delete[](void* ptr) noexcept {
+MP_EXPORT void operator delete[](void* ptr) noexcept {
     RECORD_ALLOC_WITH_OBJECT_INFO(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
-void operator delete(void* ptr, std::align_val_t al) noexcept {
+MP_EXPORT void operator delete(void* ptr, std::align_val_t al) noexcept {
     RECORD_ALLOC_WITH_OBJECT_INFO(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
-void operator delete[](void* ptr, std::align_val_t al) noexcept {
+MP_EXPORT void operator delete[](void* ptr, std::align_val_t al) noexcept {
     RECORD_ALLOC_WITH_OBJECT_INFO(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
@@ -299,7 +302,7 @@ void mp::alloc_counter::dump_json(char const* filename) {
 
     constexpr glz::opts opts{.skip_null_members = false};
 
-    auto                errc = glz::write_file_json<opts>(data, filename, std::string{});
+    auto errc = glz::write_file_json<opts>(data, filename, std::string{});
     if (errc) {
         std::string glz_error = glz::format_error(errc, std::string{});
         throw ERR("Error when dumping json - {}", glz_error);

@@ -38,3 +38,4 @@ AlignConsecutiveShortCaseStatements:
   AlignCaseColons: false
 AllowShortCaseExpressionOnASingleLine: true
 AllowShortCaseLabelsOnASingleLine: true
+AttributeMacros: [MP_EXPORT]
