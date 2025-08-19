@@ -34,8 +34,13 @@ struct On {
 struct ast_tools {
     CompilerInstance& compiler;
     ASTContext&       ctx = compiler.getASTContext();
+    PrintingPolicy    pol = ctx.getPrintingPolicy();
 
-    ast_tools(CompilerInstance& compiler) : compiler(compiler) {}
+    ast_tools(CompilerInstance& compiler) : compiler(compiler) {
+        // Ensures that tag keywords such as 'struct' or 'class' are suppressed
+        // when printing the type name
+        pol.adjustForCPlusPlus();
+    }
 
     /// Prepends the given statement to a CompoundStatement, returning
     /// a new CompoundStatement
@@ -314,7 +319,7 @@ struct ast_tools {
             to_void_ptr(this_expr(loc, type)),
             builtin_alloca(loc, 48),
             sizeof_type(loc, type),
-            to_char_ptr(string_literal(loc, type.getAsString())),
+            to_char_ptr(string_literal(loc, type.getAsString(pol))),
         });
 
         return CallExpr::Create(ctx, func, args, ctx.VoidTy, VK_PRValue, loc, FPOptionsOverride());
@@ -340,7 +345,7 @@ struct ast_tools {
             {to_void_ptr(this_expr(loc, type)),
              builtin_alloca(loc, 48),
              sizeof_type(loc, type),
-             to_char_ptr(string_literal(loc, type.getAsString())),
+             to_char_ptr(string_literal(loc, type.getAsString(pol))),
              op_postfix_inc(loc, var_decl_ref(loc, var_decl), ctx.UnsignedLongLongTy)});
 
         return {
