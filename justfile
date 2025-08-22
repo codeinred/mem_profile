@@ -20,6 +20,7 @@ dsymutil_tgt := if os() == "macos" {
     "_noop"
 }
 
+lib_ext := if os() == "macos" { "dylib" } else { "so" }
 
 clang_exe := join(clang_bin, 'clang')
 clang_tidy := join(clang_bin, 'clang-tidy')
@@ -64,7 +65,7 @@ test_plugin: build
         -Imp_types/include \
         -Imp_unwind/include \
         --include={{cwd}}/mp_hook_prelude/include/mp_hook_prelude.h \
-        -fplugin=build/libmp_plugin.dylib \
+        -fplugin=build/libmp_plugin.{{lib_ext}} \
         -Xclang=-add-plugin \
         -Xclang=mp_instrument_dtors -g -o build/file_with_plugin
     build/file_with_plugin
@@ -83,10 +84,10 @@ build_example: install
         -DCMAKE_C_COMPILER={{clang_cc}} \
         -DCMAKE_BUILD_TYPE=Debug
     cmake --build examples/build
-    @just {{dsymutil_tgt}} build/libmp_runtime.dylib
+    @just {{dsymutil_tgt}} build/libmp_runtime.{{lib_ext}}
 
 mp_run *args:
-    env {{ld_preload}}=build/libmp_runtime.dylib {{args}}
+    env {{ld_preload}}=build/libmp_runtime.{{lib_ext}} {{args}}
 
 _gen_test_file prog:
     @just {{dsymutil_tgt}} examples/build/{{prog}}
