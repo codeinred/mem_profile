@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mp_types/types.h>
+#include <mp_core/export.h>
 namespace mp {
 
 
@@ -42,5 +43,5 @@ size_t mp_extract_events(size_t           max_events,
 
 
 /// Print a trace to standard out
-void mp_unwind_show_trace();
+MP_EXPORT void mp_unwind_show_trace();
 } // namespace mp

@@ -62,9 +62,10 @@ test_plugin: build
     {{clang_cxx}} \
         test_files/test.cpp -O3 \
         -L build -rpath build -l mp_unwind_shared \
-        -Imp_types/include \
-        -Imp_unwind/include \
-        --include={{cwd}}/mp_hook_prelude/include/mp_hook_prelude.h \
+        -Imp/types/include \
+        -Imp/unwind/include \
+        -Imp/core/include \
+        --include={{cwd}}/mp/hook_prelude/include/mp_hook_prelude.h \
         -fplugin=build/libmp_plugin.{{lib_ext}} \
         -Xclang=-add-plugin \
         -Xclang=mp_instrument_dtors -g -o build/file_with_plugin
