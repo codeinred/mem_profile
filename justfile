@@ -8,6 +8,13 @@ clang_bin := if os() == "macos" {
     ""
 }
 
+ld_preload := if os() == "macos" {
+    "DYLD_INSERT_LIBRARIES"
+} else {
+    "LD_PRELOAD"
+}
+
+
 clang_exe := join(clang_bin, 'clang')
 clang_tidy := join(clang_bin, 'clang-tidy')
 
@@ -63,6 +70,19 @@ build_example: install
         -DCMAKE_C_COMPILER={{clang_cc}} \
         -DCMAKE_BUILD_TYPE=Debug
     cmake --build examples/build
+
+mp_run *args:
+    env {{ld_preload}}=build/libmp_runtime.dylib {{args}}
+
+_gen_test_file prog:
+    @just mp_run MEM_PROFILE_OUT=stats_reader/test_files/{{prog}}.json examples/build/{{prog}}
+
+gen_test_files: build_example
+    mkdir -p stats_reader/test_files
+    @just _gen_test_file simple_alloc
+    @just _gen_test_file simple_nested_objects
+    @just _gen_test_file single_alloc
+    @just _gen_test_file string
 
 run_example example: build_example
     examples/build/{{example}}
