@@ -56,8 +56,12 @@ def print_event_trace(
         last_ent = ent[-1]
 
         if obj is not None:
+            s = f"OBJECT this={bb_yellow(ptr(obj.addr))}"
+            if obj.offset is not None:
+                s += f" offset={bb_blue(obj.offset)}"
+            s += f" size={bb_green(obj.size)} type={bb_magenta(obj.type)}"
             last_ent.append(
-                f"OBJECT this={bb_yellow(ptr(obj.addr))} size={bb_green(obj.size)} type={bb_magenta(obj.type)}",
+                s
             )
 
         if show_bin_addr:

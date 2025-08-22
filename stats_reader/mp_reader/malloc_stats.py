@@ -40,7 +40,12 @@ class ObjectEnt:
     object_id: u64
     addr: addr_t
     size: size_t
+    """Offset of this object, within it's parent"""
+    offset: addr_t | None
     type: str
+
+    def mem_range(self) -> range:
+        return range(self.addr, self.addr + self.size)
 
 
 @dataclass
@@ -63,6 +68,13 @@ class OutputObjectInfo:
     # Type name indices into string table
     type: list[str_index_t]
 
+
+
+def get_offset(parent_range: range, addr: int) -> addr_t | None:
+    if addr in parent_range:
+        return addr - parent_range.start
+    else:
+        return None
 
 @dataclass
 class OutputEvent:
@@ -93,14 +105,17 @@ class OutputEvent:
         entries = [None] * len(self.pc_id)
         object_info = self.object_info
         if object_info is not None:
+            parent_range = range(0, 0)
+            # Iterate in reverse, so that we can compute the parent_range as we go along
             for i, object_id, addr, size, type in zip(
-                object_info.trace_index,
-                object_info.object_id,
-                object_info.addr,
-                object_info.size,
-                object_info.type,
+                reversed(object_info.trace_index),
+                reversed(object_info.object_id),
+                reversed(object_info.addr),
+                reversed(object_info.size),
+                reversed(object_info.type),
             ):
-                entries[i] = ObjectEnt(object_id, addr, size, ctx.strtab[type])
+                entries[i] = ObjectEnt(object_id, addr, size, get_offset(parent_range, addr), ctx.strtab[type])
+                parent_range = range(addr, addr + size)
         return entries
 
 
