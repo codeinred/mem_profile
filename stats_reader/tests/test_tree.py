@@ -50,7 +50,7 @@ def test_print_tree():
     assert (
         _print_get_out(
             print_tree,
-            Tree("head", [1, Tree(["two", "three"], ["four", "five", "six"]), "seven"]),
+            Tree("head", [1, Tree(["two", "three"], ["four", ["five", "five (again)"], "six"]), ["seven", "eight"]]),
         )
         == """head
 ├── 1
@@ -58,8 +58,10 @@ def test_print_tree():
 │   three
 │   ├── four
 │   ├── five
+│   │   five (again)
 │   └── six
 └── seven
+    eight
 """
     )
     assert (
@@ -154,6 +156,53 @@ def test_print_tree():
 │       │   y2
 │       └── z
 │           z2
+└── three
+    ├── four
+    ├── five
+    └── six
+"""
+    )
+
+    # This case is very cursed, but for convinience we permit trees an entities within
+    # an item...
+    assert (
+        _print_get_out(
+            print_tree,
+            Tree(
+                "head",
+                [
+                    "one",
+                    Tree(
+                        "tests",
+                        [
+                            "test_tree.py",
+                            Tree(
+                                ["wip", Tree("more info", ['a', 'b', 'c']), "more info 2"],
+                                ["x", ["y", "y2"], ["z", "z2"]],
+                            ),
+                            "ent3"
+                        ],
+                    ),
+                    Tree("three", ["four", "five", "six"]),
+                ],
+            ),
+        )
+        == """head
+├── one
+├── tests
+│   ├── test_tree.py
+│   ├── wip
+│   │   more info
+│   │   ├── a
+│   │   ├── b
+│   │   └── c
+│   │   more info 2
+│   │   ├── x
+│   │   ├── y
+│   │   │   y2
+│   │   └── z
+│   │       z2
+│   └── ent3
 └── three
     ├── four
     ├── five
