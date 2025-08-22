@@ -3,6 +3,7 @@
 ////////////////////////////////////////
 #include <mem_profile/prelude.h>
 #include <mp_core/export.h>
+#include <mem_profile/env.h>
 
 
 namespace mp {
@@ -273,7 +274,7 @@ void global_context::drain(local_context& context) {
 
 void global_context::generate_report() {
     auto guard = std::lock_guard(context_lock);
-    counter.dump_json("malloc_stats.json");
+    counter.dump_json(mp::mem_profile_out());
 }
 
 global_context::~global_context() { generate_report(); }
