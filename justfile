@@ -14,6 +14,12 @@ ld_preload := if os() == "macos" {
     "LD_PRELOAD"
 }
 
+dsymutil_tgt := if os() == "macos" {
+    "_dsymutil"
+} else {
+    "_noop"
+}
+
 
 clang_exe := join(clang_bin, 'clang')
 clang_tidy := join(clang_bin, 'clang-tidy')
@@ -24,6 +30,13 @@ clang_cxx := clang_exe + '++'
 install_dir := absolute_path("./install")
 
 cwd := justfile_directory()
+
+_noop *args:
+
+
+
+_dsymutil *args:
+    dsymutil {{args}}
 
 
 clang_path:
@@ -70,15 +83,17 @@ build_example: install
         -DCMAKE_C_COMPILER={{clang_cc}} \
         -DCMAKE_BUILD_TYPE=Debug
     cmake --build examples/build
+    @just {{dsymutil_tgt}} build/libmp_runtime.dylib
 
 mp_run *args:
     env {{ld_preload}}=build/libmp_runtime.dylib {{args}}
 
 _gen_test_file prog:
-    @just mp_run MEM_PROFILE_OUT=stats_reader/test_files/{{prog}}.json examples/build/{{prog}}
+    @just {{dsymutil_tgt}} examples/build/{{prog}}
+    @just mp_run MEM_PROFILE_OUT=stats_reader/test_files/{{os()}}/{{prog}}.json examples/build/{{prog}}
 
 gen_test_files: build_example
-    mkdir -p stats_reader/test_files
+    mkdir -p stats_reader/test_files/{{os()}}
     @just _gen_test_file simple_alloc
     @just _gen_test_file simple_nested_objects
     @just _gen_test_file single_alloc
