@@ -1,7 +1,7 @@
 #pragma once
 
 #include <mp_types/types.h>
-#include <mp_core/export.h>
+#include <mp_types/export.h>
 namespace mp {
 
 

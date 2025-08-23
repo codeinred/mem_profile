@@ -2,7 +2,7 @@
 ////  Counters and global contexts  ////
 ////////////////////////////////////////
 #include <mem_profile/prelude.h>
-#include <mp_core/export.h>
+#include <mp_types/export.h>
 #include <mem_profile/env.h>
 
 
