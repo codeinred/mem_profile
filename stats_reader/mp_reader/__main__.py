@@ -15,7 +15,7 @@ def main():
 
     record = load_from_file(args.input_file)
     for i in range(len(record.event_table)):
-        print_event_trace(record, i)
+        print_event_trace(record, i, skip_inline=False)
     # print_objects(record)
 
 
