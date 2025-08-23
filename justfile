@@ -57,10 +57,9 @@ run exe *args: config
     cmake --build build --target {{exe}}
     build/{{exe}} {{args}}
 
-test_plugin: build
-    rm -rf ./a.out
+build_test_file test_file: build
+    mkdir -p build/test_files
     {{clang_cxx}} \
-        test_files/test.cpp -O3 \
         -L build -rpath build -l mp_unwind_shared \
         -Imp/types/include \
         -Imp/unwind/include \
@@ -68,8 +67,10 @@ test_plugin: build
         --include={{cwd}}/mp/hook_prelude/include/mp_hook_prelude.h \
         -fplugin=build/libmp_plugin.{{lib_ext}} \
         -Xclang=-add-plugin \
-        -Xclang=mp_instrument_dtors -g -o build/file_with_plugin
-    build/file_with_plugin
+        -Xclang=mp_instrument_dtors \
+        -Og -g \
+        -o build/test_files/{{trim_end_match(test_file, ".cpp")}} \
+        test_files/{{test_file}}
 
 ast_dump *args:
     {{clang_cxx}} -Xclang=-ast-dump -c {{args}}
@@ -96,6 +97,7 @@ _gen_test_file prog:
 
 gen_test_files: build_example
     mkdir -p stats_reader/test_files/{{os()}}
+    @just {{dsymutil_tgt}} build/libmp_runtime.{{lib_ext}}
     @just _gen_test_file simple_alloc
     @just _gen_test_file simple_nested_objects
     @just _gen_test_file single_alloc
