@@ -45,7 +45,7 @@ struct Foo {
 template <class T> struct FooT : T {};
 
 struct Bar {
-    Foo f[9];
+    Foo f[3];
 };
 
 struct Super : Foo, Bar {};
@@ -58,7 +58,7 @@ struct Test3 {
 #include <array>
 int main() {
     {
-        auto myLambda = [s = std::array<my_ns::FooT<my_ns::Super>, 3>(), x = 0] {
+        auto myLambda = [s = std::array<my_ns::FooT<my_ns::Super>, 2>(), x = 0] {
 
         };
     }
