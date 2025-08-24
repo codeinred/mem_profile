@@ -86,41 +86,53 @@ struct dtor_visitor : public RecursiveASTVisitor<dtor_visitor>, ast_tools {
 
     void rewrite_dtor(CXXDestructorDecl* dtor) {
 
-        // Get the class type
-        CXXRecordDecl* class_decl = dtor->getParent();
-        QualType       class_type = ctx.getTypeDeclType(class_decl);
+        // Get the class corresponding to this dtor, and the type of that class
+        CXXRecordDecl* record = dtor->getParent();
+        QualType       type   = ctx.getTypeDeclType(record);
 
-        FunctionDecl* save_state_decl = get_hook();
+        // Find the hook called by the payload
+        FunctionDecl* hook = find_function_decl("save_state");
 
-        if (save_state_decl == nullptr) {
+        if (hook == nullptr) {
             /// TODO: add proper error handling
             llvm::outs() << "Unable to find `save_state`\n";
             return;
         }
 
+        // Mark the dtor as not defaulted, since we're adding code for it
         if (dtor->isDefaulted() || dtor->isExplicitlyDefaulted()) {
             dtor->setDefaulted(false);
             dtor->setExplicitlyDefaulted(false);
         }
-        dtor->addAttr(NoInlineAttr::Create(ctx));
 
-        auto decl_context = dtor->getDeclContext();
+        auto dtor_start = dtor->getBeginLoc();
+        auto body_start = dtor->getBodyRBrace();
+
+
+        // Inject the payload into the dtor ast. This payload includes the
+        // call to the hook, as well as the creation of some static variables
+        // which provide information about the class.
+        auto payload = invoke_hook(body_start, type, hook, record, dtor);
+
         if (!dtor->hasBody()) {
-            auto loc  = dtor->getSourceRange().getBegin();
-            auto hook = invoke_hook(loc, class_type, save_state_decl, decl_context);
-            dtor->setBody(compound_stmt(loc, hook));
+            dtor->setBody(compound_stmt(body_start, payload));
         } else {
-            auto OldBody   = dtor->getBody();
-            auto loc_begin = OldBody->getBeginLoc();
-            auto hook      = invoke_hook(loc_begin, class_type, save_state_decl, decl_context);
-
+            auto OldBody = dtor->getBody();
             if (CompoundStmt* CS = dyn_cast<CompoundStmt>(OldBody)) {
-                dtor->setBody(prepend(CS, hook));
+                dtor->setBody(prepend(CS, payload));
             } else {
                 // Body is a single statement, wrap in compound statement with the hook prepended
-                dtor->setBody(join(hook, OldBody));
+                dtor->setBody(join(payload, OldBody));
             }
         }
+
+        // Mark the destructor as 'noinline', to ensure it isn't inlined
+        dtor->addAttr(NoInlineAttr::Create(ctx, SourceRange(dtor_start)));
+
+
+        dtor->dumpColor();
+        ctx.getFullLoc(dtor_start).dump();
+        ctx.getFullLoc(body_start).dump();
         auto& outs = llvm::outs();
         outs << "Rewrote CXX Destructor '";
         auto&& sm  = ctx.getSourceManager();

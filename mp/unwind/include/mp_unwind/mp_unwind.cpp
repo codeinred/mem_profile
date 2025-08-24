@@ -120,9 +120,9 @@ size_t mp_extract_events(size_t           max_events,
                     event_buffer[event_i++] = {
                         spp_i,
                         info.call_count,
-                        info.this_size,
+                        info.type_data->size,
                         (uintptr_t)info.this_ptr,
-                        info.type_name,
+                        info.type_data->name,
                     };
                 }
                 break;
@@ -234,9 +234,9 @@ void mp_unwind_show_trace() {
                            i,
                            info.tag,
                            info.call_count,
-                           info.this_size,
+                           info.type_data->size,
                            info.this_ptr,
-                           info.type_name,
+                           info.type_data->name,
                            info.checksum);
                 } else {
                     printf("└── " s_frame_info "  <found frame with bad checksum>\n");

@@ -5,6 +5,25 @@
 
 extern "C" int printf(const char*, ...);
 
+struct _mp_type_data {
+    using size_t = __SIZE_TYPE__;
+
+    size_t      size;
+    char const* name;
+
+    size_t base_count;
+    size_t member_count;
+
+    // char const* const* base_types;
+    // size_t const*      base_offsets;
+    // size_t const*      base_sizes;
+
+    // char const* const* member_names;
+    // char const* const* member_types;
+    // size_t const*      member_offsets;
+    // size_t const*      member_sizes;
+};
+
 namespace mp {
 using size_t       = __SIZE_TYPE__;
 using ull_t        = unsigned long long;
@@ -14,29 +33,26 @@ constexpr ull_t     _mp_frame_tag     = 0xeeb36e726e3ffec1ull;
 inline atomic_ull_t _mp_event_counter = 0;
 
 struct _mp_frame_information {
-    ull_t       tag;
-    ull_t       call_count;
-    size_t      this_size;
-    void*       this_ptr;
-    char const* type_name;
-    ull_t       checksum;
+    ull_t                tag;
+    ull_t                call_count;
+    void*                this_ptr;
+    _mp_type_data const* type_data;
+    ull_t                checksum;
 };
 } // namespace mp
 
-[[gnu::always_inline]]
-inline void save_state(void*       this_ptr,
-                       void*       alloca_block,
-                       mp::size_t      this_size,
-                       char const* type_name) {
 
-    static_assert(sizeof(mp::_mp_frame_information) <= 48);
-    auto count = ::mp::_mp_event_counter++;
+
+[[gnu::always_inline]]
+inline void save_state(void* this_ptr, void* alloca_block, _mp_type_data const& type_data) {
+
+    static_assert(sizeof(mp::_mp_frame_information) <= 40);
+    auto count  = ::mp::_mp_event_counter++;
     auto result = mp::_mp_frame_information{
         mp::_mp_frame_tag,
         count,
-        this_size,
         this_ptr,
-        type_name,
+        &type_data,
         mp::_mp_frame_tag ^ count, // For now just put tag again...
         // TODO: use a mulmix, eg best::mul(a, b).mix()
     };

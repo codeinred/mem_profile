@@ -3,6 +3,7 @@
 #include <clang/AST/AST.h>
 #include <clang/AST/ASTConsumer.h>
 #include <clang/AST/Expr.h>
+#include <clang/AST/RecordLayout.h>
 #include <clang/AST/RecursiveASTVisitor.h>
 #include <clang/AST/Type.h>
 #include <clang/Frontend/CompilerInstance.h>
@@ -93,22 +94,25 @@ struct ast_tools {
         return MutableArrayRef<T>(refBegin, refEnd);
     }
 
-    FunctionDecl* get_hook() {
-        DeclarationName SaveStateName = &ctx.Idents.get("save_state");
-        DeclContext*    TUContext     = ctx.getTranslationUnitDecl();
+    template <class T> T* get_decl_by_type(StringRef name_str) {
+        DeclarationName name      = &ctx.Idents.get(name_str);
+        DeclContext*    TUContext = ctx.getTranslationUnitDecl();
 
-        FunctionDecl* SaveStateDecl = nullptr;
-        auto          LookupResult  = TUContext->lookup(SaveStateName);
+        auto LookupResult = TUContext->lookup(name);
         for (auto* Decl : LookupResult) {
-            if (auto* FD = dyn_cast<FunctionDecl>(Decl)) {
-                SaveStateDecl = FD;
-                break;
+            if (auto* FD = dyn_cast<T>(Decl)) {
+                return FD;
             }
         }
-        if (!SaveStateDecl) {
-            return nullptr;
-        }
-        return SaveStateDecl;
+        return nullptr;
+    }
+
+    FunctionDecl* find_function_decl(StringRef name) {
+        return get_decl_by_type<FunctionDecl>(name);
+    }
+
+    CXXRecordDecl* find_record_decl(StringRef name) {
+        return get_decl_by_type<CXXRecordDecl>(name);
     }
 
     /// Returns an implicit cast to a void pointer for the given expression
@@ -151,6 +155,17 @@ struct ast_tools {
                                    false,
                                    loc,
                                    var->getType(),
+                                   VK_LValue);
+    }
+
+    DeclRefExpr* const_decl_ref(Loc loc, VarDecl* var) {
+        return DeclRefExpr::Create(ctx,
+                                   NestedNameSpecifierLoc(),
+                                   Loc(),
+                                   var,
+                                   false,
+                                   loc,
+                                   ctx.getConstType(var->getType()),
                                    VK_LValue);
     }
 
@@ -310,19 +325,89 @@ struct ast_tools {
         return IntegerLiteral::Create(ctx, llvm::APInt(bit_width, literal_value), type, loc);
     }
 
-    auto invoke_hook(Loc loc, QualType type, FunctionDecl* hook_decl, DeclContext* decl_context)
-        -> Stmt* {
-        // Get a function pointer to the hooku
+    auto invoke_hook(Loc            loc,
+                     QualType       type,
+                     FunctionDecl*  hook_decl,
+                     CXXRecordDecl* record,
+                     CXXMethodDecl* method_ctx) -> std::array<Stmt*, 2> {
+        // Get a function pointer to the hook
         auto func = fn_ptr(loc, hook_decl);
+
+        const ASTRecordLayout& layout = ctx.getASTRecordLayout(record);
+
+        auto const& bases_  = record->bases();
+        auto const& fields_ = record->fields();
+
+        size_t base_count  = bases_.end() - bases_.begin();
+        size_t field_count = layout.getFieldCount();
+
+
+        auto mp_type_data_decl = find_record_decl("_mp_type_data");
+        if (!mp_type_data_decl->isCompleteDefinition()) {
+            throw std::runtime_error("Complete definition required");
+        }
+
+        auto mp_type_data_qual_type = ctx.getTypeDeclType(mp_type_data_decl);
+        auto type_data
+            = declare_static_var(loc, method_ctx, "_mp_TYPE_DATA", mp_type_data_qual_type);
+        type_data->setConstexpr(true);
+
+        auto init_expr
+            = new (ctx) InitListExpr(ctx,
+                                     loc,
+                                     array_ref<Expr*>({
+                                         // size_literal(loc, layout.getSize().getQuantity()),
+                                         sizeof_type(loc, type),
+                                         to_char_ptr(string_literal(loc, type.getAsString(pol))),
+                                         size_literal(loc, base_count),
+                                         size_literal(loc, field_count),
+                                     }),
+                                     loc);
+        init_expr->setType(ctx.getConstType(mp_type_data_qual_type));
+
+        type_data->setInit(init_expr);
 
         auto args = array_ref<Expr*>({
             to_void_ptr(this_expr(loc, type)),
-            builtin_alloca(loc, 48),
-            sizeof_type(loc, type),
-            to_char_ptr(string_literal(loc, type.getAsString(pol))),
+            builtin_alloca(loc, 40),
+            const_decl_ref(loc, type_data),
         });
 
-        return CallExpr::Create(ctx, func, args, ctx.VoidTy, VK_PRValue, loc, FPOptionsOverride());
+
+
+        // // Print member variables and their types
+        // llvm::outs() << "type: " << type.getAsString(pol) << "\n";
+
+
+
+        // for (auto base : record->bases()) {
+        //     CharUnits offset = layout.getBaseClassOffset(base.getType()->getAsCXXRecordDecl());
+        //     llvm::outs() << "- base: " << base.getType().getAsString(pol)
+        //                  << "\n  offset: " << offset.getQuantity() << "\n";
+        // }
+
+        // for (auto field : record->fields()) {
+        //     uint64_t offset_bits  = layout.getFieldOffset(field->getFieldIndex());
+        //     uint64_t offset_bytes = offset_bits / 8;
+        //     llvm::outs() << "- member: " << field->getNameAsString()
+        //                  << "\n  type: " << field->getType().getAsString(pol)
+        //                  << "\n  offset: " << offset_bytes << "\n";
+        // }
+
+        auto call_expr
+            = CallExpr::Create(ctx, func, args, ctx.VoidTy, VK_PRValue, loc, FPOptionsOverride());
+
+        auto decl_stmt = create_decl_stmt(loc, type_data);
+        return std::array<Stmt*, 2>{
+            decl_stmt,
+            call_expr,
+        };
+    }
+
+    auto create_decl_stmt(Loc loc, VarDecl* var_decl) -> DeclStmt* {
+        auto decls = mut_array_ref<Decl*>({var_decl});
+
+        return new (ctx) DeclStmt(DeclGroupRef::Create(ctx, decls.data(), decls.size()), loc, loc);
     }
 
     auto invoke_hook_with_counter(Loc           loc,
