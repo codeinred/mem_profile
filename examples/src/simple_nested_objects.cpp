@@ -21,6 +21,8 @@ struct my_object {
     sub_b b;
     sub_c c;
 };
+
+struct super_object : my_object {};
 } // namespace test
 
-int main() { test::my_object o; }
+int main() { test::super_object o; }
