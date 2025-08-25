@@ -12,16 +12,16 @@ struct _mp_type_data {
     char const* name;
 
     size_t base_count;
-    size_t member_count;
+    size_t field_count;
 
-    // char const* const* base_types;
-    // size_t const*      base_offsets;
-    // size_t const*      base_sizes;
+    char const* const* field_names;
+    char const* const* field_types;
+    size_t const*      field_sizes;
+    size_t const*      field_offsets;
 
-    // char const* const* member_names;
-    // char const* const* member_types;
-    // size_t const*      member_offsets;
-    // size_t const*      member_sizes;
+    char const* const* base_types;
+    size_t const*      base_sizes;
+    size_t const*      base_offsets;
 };
 
 namespace mp {

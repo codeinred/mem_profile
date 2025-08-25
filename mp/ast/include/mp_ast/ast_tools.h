@@ -81,6 +81,17 @@ struct ast_tools {
         return array_ref(std::span<T const>(elems.begin(), elems.size()));
     }
 
+    /// Allocates space for `count` elements of the given type. Returns a `MutableArrayRef<T>` that can be
+    /// filled by the user.
+    template <class T> MutableArrayRef<T> alloc_mut_array_ref(size_t count) {
+        T* dest     = ctx.Allocate<T>(count);
+        T* refBegin = dest;
+        T* refEnd   = dest + count;
+
+        return MutableArrayRef<T>(refBegin, refEnd);
+    }
+
+
     template <class T> MutableArrayRef<T> mut_array_ref(std::initializer_list<T> elems) {
         size_t count    = elems.size();
         T*     dest     = ctx.Allocate<T>(elems.size());
@@ -302,16 +313,18 @@ struct ast_tools {
                                         FPOptionsOverride());
     }
 
-    auto to_char_ptr(StringLiteral* literal) -> ImplicitCastExpr* {
-
+    auto decay_to_ptr(Expr* expr) {
         return ImplicitCastExpr::Create(ctx,
-                                        ctx.getArrayDecayedType(literal->getType()),
+                                        ctx.getArrayDecayedType(expr->getType()),
                                         CastKind::CK_ArrayToPointerDecay,
-                                        literal,
+                                        expr,
                                         nullptr,
                                         VK_PRValue,
                                         FPOptionsOverride());
     }
+
+    auto to_char_ptr(StringLiteral* literal) -> ImplicitCastExpr* { return decay_to_ptr(literal); }
+
 
     auto size_literal(Loc loc, size_t literal_value) -> IntegerLiteral* {
         auto   size_type   = ctx.getSizeType();
@@ -325,22 +338,132 @@ struct ast_tools {
         return IntegerLiteral::Create(ctx, llvm::APInt(bit_width, literal_value), type, loc);
     }
 
+    auto decl_constexpr_static_size_array(Loc                        loc,
+                                          StringRef                  name,
+                                          std::vector<size_t> const& values,
+                                          DeclContext*               decl_context) -> VarDecl* {
+        auto   size_type   = ctx.getSizeType();
+        size_t size_t_bits = ctx.getTypeSize(size_type);
+        auto   type        = ctx.getConstantArrayType(size_type,
+                                             llvm::APInt(size_t_bits, values.size()),
+                                             nullptr,
+                                             ArraySizeModifier::Normal,
+                                             0);
+
+        auto result = declare_static_var(loc, decl_context, name, type);
+        result->setConstexpr(true);
+
+        auto value_exprs = alloc_mut_array_ref<Expr*>(values.size());
+
+        for (size_t i = 0; i < values.size(); i++) {
+            value_exprs[i] = size_literal(loc, values[i]);
+        }
+
+        auto init_expr = new (ctx) InitListExpr(ctx, loc, value_exprs, loc);
+        init_expr->setType(type);
+        result->setInit(init_expr);
+
+        return result;
+    }
+
+
+    auto decl_constexpr_static_cstring_array(Loc                             loc,
+                                             StringRef                       name,
+                                             std::vector<std::string> const& values,
+                                             DeclContext* decl_context) -> VarDecl* {
+        auto   size_type   = ctx.getSizeType();
+        size_t size_t_bits = ctx.getTypeSize(size_type);
+
+        auto type = ctx.getConstantArrayType(ctx.getPointerType(ctx.getConstType(ctx.CharTy)),
+                                             llvm::APInt(size_t_bits, values.size()),
+                                             nullptr,
+                                             ArraySizeModifier::Normal,
+                                             0);
+
+        auto result = declare_static_var(loc, decl_context, name, type);
+        result->setConstexpr(true);
+        auto value_exprs = alloc_mut_array_ref<Expr*>(values.size());
+        for (size_t i = 0; i < values.size(); i++) {
+            value_exprs[i] = to_char_ptr(string_literal(loc, values[i]));
+        }
+
+        auto init_expr = new (ctx) InitListExpr(ctx, loc, value_exprs, loc);
+        init_expr->setType(type);
+        result->setInit(init_expr);
+
+        return result;
+    }
+
     auto invoke_hook(Loc            loc,
                      QualType       type,
                      FunctionDecl*  hook_decl,
                      CXXRecordDecl* record,
-                     CXXMethodDecl* method_ctx) -> std::array<Stmt*, 2> {
+                     CXXMethodDecl* method_ctx) {
         // Get a function pointer to the hook
         auto func = fn_ptr(loc, hook_decl);
 
         const ASTRecordLayout& layout = ctx.getASTRecordLayout(record);
 
-        auto const& bases_  = record->bases();
-        auto const& fields_ = record->fields();
+        auto const& bases_      = record->bases();
+        size_t      base_count  = bases_.end() - bases_.begin();
+        size_t      field_count = layout.getFieldCount();
 
-        size_t base_count  = bases_.end() - bases_.begin();
-        size_t field_count = layout.getFieldCount();
+        std::vector<std::string> field_names(field_count);
+        std::vector<std::string> field_types(field_count);
+        std::vector<size_t>      field_offsets(field_count);
+        std::vector<size_t>      field_sizes(field_count);
 
+
+        size_t char_bits = ctx.getCharWidth();
+        {
+
+            size_t i = 0;
+            for (auto const& field : record->fields()) {
+                auto field_type  = field->getType();
+                field_names[i]   = field->getNameAsString();
+                field_types[i]   = field_type.getAsString(pol);
+                field_offsets[i] = layout.getFieldOffset(field->getFieldIndex()) / char_bits;
+                field_sizes[i]   = ctx.getTypeSizeInChars(field_type).getQuantity();
+                i++;
+            }
+        }
+
+
+
+        std::vector<std::string> base_names(base_count);
+        std::vector<size_t>      base_offsets(base_count);
+        std::vector<size_t>      base_sizes(base_count);
+
+        {
+            size_t i = 0;
+            for (auto const& base : bases_) {
+                auto base_type = base.getType();
+                base_names[i]  = base_type.getAsString(pol);
+                base_offsets[i]
+                    = layout.getBaseClassOffset(base.getType()->getAsCXXRecordDecl()).getQuantity();
+                base_sizes[i] = ctx.getTypeSizeInChars(base_type).getQuantity();
+                ++i;
+            }
+        }
+
+
+        auto field_names_var
+            = decl_constexpr_static_cstring_array(loc, "__MP_FIELD_NAMES", field_names, method_ctx);
+        auto field_types_var
+            = decl_constexpr_static_cstring_array(loc, "__MP_FIELD_TYPES", field_types, method_ctx);
+        auto field_offsets_var = decl_constexpr_static_size_array(loc,
+                                                                  "__MP_FIELD_OFFSETS",
+                                                                  field_offsets,
+                                                                  method_ctx);
+        auto field_sizes_var
+            = decl_constexpr_static_size_array(loc, "__MP_FIELD_SIZES", field_sizes, method_ctx);
+
+        auto base_types_var
+            = decl_constexpr_static_cstring_array(loc, "__MP_BASE_TYPES", base_names, method_ctx);
+        auto base_sizes_var
+            = decl_constexpr_static_size_array(loc, "__MP_BASE_SIZES", base_sizes, method_ctx);
+        auto base_offsets_var
+            = decl_constexpr_static_size_array(loc, "__MP_BASE_OFFSETS", base_offsets, method_ctx);
 
         auto mp_type_data_decl = find_record_decl("_mp_type_data");
         if (!mp_type_data_decl->isCompleteDefinition()) {
@@ -348,9 +471,9 @@ struct ast_tools {
         }
 
         auto mp_type_data_qual_type = ctx.getTypeDeclType(mp_type_data_decl);
-        auto type_data
-            = declare_static_var(loc, method_ctx, "_mp_TYPE_DATA", mp_type_data_qual_type);
-        type_data->setConstexpr(true);
+        auto type_data_var
+            = declare_static_var(loc, method_ctx, "__MP_TYPE_DATA", mp_type_data_qual_type);
+        type_data_var->setConstexpr(true);
 
         auto init_expr
             = new (ctx) InitListExpr(ctx,
@@ -361,45 +484,38 @@ struct ast_tools {
                                          to_char_ptr(string_literal(loc, type.getAsString(pol))),
                                          size_literal(loc, base_count),
                                          size_literal(loc, field_count),
+                                         decay_to_ptr(const_decl_ref(loc, field_names_var)),
+                                         decay_to_ptr(const_decl_ref(loc, field_types_var)),
+                                         decay_to_ptr(const_decl_ref(loc, field_sizes_var)),
+                                         decay_to_ptr(const_decl_ref(loc, field_offsets_var)),
+                                         decay_to_ptr(const_decl_ref(loc, base_types_var)),
+                                         decay_to_ptr(const_decl_ref(loc, base_sizes_var)),
+                                         decay_to_ptr(const_decl_ref(loc, base_offsets_var)),
                                      }),
                                      loc);
         init_expr->setType(ctx.getConstType(mp_type_data_qual_type));
 
-        type_data->setInit(init_expr);
+        type_data_var->setInit(init_expr);
 
         auto args = array_ref<Expr*>({
             to_void_ptr(this_expr(loc, type)),
             builtin_alloca(loc, 40),
-            const_decl_ref(loc, type_data),
+            const_decl_ref(loc, type_data_var),
         });
 
-
-
-        // // Print member variables and their types
-        // llvm::outs() << "type: " << type.getAsString(pol) << "\n";
-
-
-
-        // for (auto base : record->bases()) {
-        //     CharUnits offset = layout.getBaseClassOffset(base.getType()->getAsCXXRecordDecl());
-        //     llvm::outs() << "- base: " << base.getType().getAsString(pol)
-        //                  << "\n  offset: " << offset.getQuantity() << "\n";
-        // }
-
-        // for (auto field : record->fields()) {
-        //     uint64_t offset_bits  = layout.getFieldOffset(field->getFieldIndex());
-        //     uint64_t offset_bytes = offset_bits / 8;
-        //     llvm::outs() << "- member: " << field->getNameAsString()
-        //                  << "\n  type: " << field->getType().getAsString(pol)
-        //                  << "\n  offset: " << offset_bytes << "\n";
-        // }
 
         auto call_expr
             = CallExpr::Create(ctx, func, args, ctx.VoidTy, VK_PRValue, loc, FPOptionsOverride());
 
-        auto decl_stmt = create_decl_stmt(loc, type_data);
-        return std::array<Stmt*, 2>{
-            decl_stmt,
+        return std::array<Stmt*, 9>{
+            create_decl_stmt(loc, field_names_var),
+            create_decl_stmt(loc, field_types_var),
+            create_decl_stmt(loc, field_sizes_var),
+            create_decl_stmt(loc, field_offsets_var),
+            create_decl_stmt(loc, base_types_var),
+            create_decl_stmt(loc, base_sizes_var),
+            create_decl_stmt(loc, base_offsets_var),
+            create_decl_stmt(loc, type_data_var),
             call_expr,
         };
     }
