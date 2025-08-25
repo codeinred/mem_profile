@@ -11,9 +11,11 @@ struct Baz {
     ~Baz() {}
 };
 
+struct Empty {};
+
 namespace my_ns {
 
-    bool do_trace = true;
+bool do_trace = true;
 struct Foo {
     int*   arr;
     size_t size;
@@ -35,7 +37,7 @@ struct Foo {
         delete[] arr;
 
         printf("Destroyed Foo\n");
-        if(do_trace) {
+        if (do_trace) {
             mp::mp_unwind_show_trace();
             //do_trace = false;
         }
@@ -45,10 +47,20 @@ struct Foo {
 template <class T> struct FooT : T {};
 
 struct Bar {
-    Foo f[3];
+    Foo  f0;
+    Foo  f1;
+    Foo  f2;
+    int  x;
+    int  y;
+    int  z;
+    char c1, c2, c3, c4;
 };
 
-struct Super : Foo, Bar {};
+struct Super : Empty, Foo, Bar {
+    int field1;
+    int field2;
+    int field3;
+};
 
 struct Test3 {
     ~Test3() {}
