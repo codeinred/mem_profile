@@ -152,11 +152,16 @@ void mp_unwind_show_trace() {
 #define s_frame_info MP_COLOR_BB "frame_info:" MP_COLOR_Re
 #define s_tag MP_COLOR_BB "tag:" MP_COLOR_Re
 #define s_call_count MP_COLOR_BB "call_count:" MP_COLOR_Re
-#define s_this_size MP_COLOR_BB "this_size:" MP_COLOR_Re
 #define s_this_ptr MP_COLOR_BB "this_ptr:" MP_COLOR_Re
-#define s_type_name MP_COLOR_BB "type_name:" MP_COLOR_Re
 #define s_checksum MP_COLOR_BB "checksum:" MP_COLOR_Re
-
+#define s_type_data MP_COLOR_BB "type_data:" MP_COLOR_Re
+#define s_size MP_COLOR_BB "size:" MP_COLOR_Re
+#define s_type MP_COLOR_BB "type:" MP_COLOR_Re
+#define s_base_count MP_COLOR_BB "base_count:" MP_COLOR_Re
+#define s_field_count MP_COLOR_BB "field_count:" MP_COLOR_Re
+#define s_field MP_COLOR_BB "field:" MP_COLOR_Re
+#define s_fields MP_COLOR_BB "fields:" MP_COLOR_Re
+#define s_bases MP_COLOR_BB "bases:" MP_COLOR_Re
 
     char          function_name[8192];
     unw_cursor_t  cursor;
@@ -221,22 +226,68 @@ void mp_unwind_show_trace() {
                 __builtin_memcpy(&info, frame_start_ptr + i, sizeof(info));
 
                 bool check_good = (info.tag ^ info.call_count) == info.checksum;
+                auto type_data  = *info.type_data;
                 if (check_good) {
                     printf("└── " s_frame_info MP_COLOR_GRAY
-                           "  # (at stack[%d] in frame)\n" MP_COLOR_Re "    ├── " s_tag
-                           "        %llu\n"
+                           "  # (at stack[%d] in frame)\n" MP_COLOR_Re //
+                           "    ├── " s_tag "        %llu\n"
                            "    ├── " s_call_count " %llu\n"
-                           "    ├── " s_this_size "  %lu\n"
                            "    ├── " s_this_ptr "   %p\n"
-                           "    ├── " s_type_name "  " MP_COLOR_BM "\"%s\"\n" MP_COLOR_Re
-                           "    └── " s_checksum "   %llu  " MP_COLOR_GRAY
-                           "# (checksum good)\n" MP_COLOR_Re,
+                           "    ├── " s_type_data "\n"
+                           "    │   ├── " s_type "         " MP_COLOR_M "%s" MP_COLOR_Re "\n"
+                           "    │   ├── " s_size "         %zu\n"
+                           "    │   ├── " s_base_count "   %zu\n"
+                           "    │   ├── " s_bases "\n",
                            i,
                            info.tag,
                            info.call_count,
-                           info.type_data->size,
                            info.this_ptr,
-                           info.type_data->name,
+                           type_data.name,
+                           type_data.size,
+                           type_data.base_count);
+
+                    for (size_t i = 0; i < type_data.base_count; i++) {
+                        char const* joiner = "├── ";
+                        if (i == type_data.base_count - 1) {
+                            joiner = "└── ";
+                        }
+
+                        size_t      off0 = type_data.base_offsets[i];
+                        size_t      off1 = off0 + type_data.base_sizes[i];
+                        char const* ty   = type_data.base_types[i];
+                        printf("    │   │   %s       " MP_COLOR_BY "%4zu..%4zu" MP_COLOR_Re
+                               ": " MP_COLOR_M "%s" MP_COLOR_Re "\n",
+                               joiner,
+                               off0,
+                               off1,
+                               ty);
+                    }
+
+                    printf("    │   ├── " s_field_count "  %zu\n"
+                           "    │   └── " s_fields "\n",
+                           type_data.field_count);
+
+                    for (size_t i = 0; i < type_data.field_count; i++) {
+                        char const* joiner = "├── ";
+                        if (i == type_data.field_count - 1) {
+                            joiner = "└── ";
+                        }
+
+                        size_t      off0 = type_data.field_offsets[i];
+                        size_t      off1 = off0 + type_data.field_sizes[i];
+                        char const* ty   = type_data.field_types[i];
+                        char const* name = type_data.field_names[i];
+                        printf("    │       %s       " MP_COLOR_BY "%4zu..%4zu" MP_COLOR_Re
+                               ": " MP_COLOR_M "%s " MP_COLOR_BG "%s" MP_COLOR_Re " \n",
+                               joiner,
+                               off0,
+                               off1,
+                               ty,
+                               name);
+                    }
+
+                    printf("    └── " s_checksum "   %llu  " MP_COLOR_GRAY
+                           "# (checksum good)\n" MP_COLOR_Re,
                            info.checksum);
                 } else {
                     printf("└── " s_frame_info "  <found frame with bad checksum>\n");
