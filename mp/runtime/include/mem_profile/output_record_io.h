@@ -18,7 +18,8 @@ template <> struct glz::meta<mp::output_object_info> {
         MP_GLZ_ENTRY(mp::output_object_info, object_id),
         MP_GLZ_ENTRY(mp::output_object_info, addr),
         MP_GLZ_ENTRY(mp::output_object_info, size),
-        MP_GLZ_ENTRY(mp::output_object_info, type)
+        MP_GLZ_ENTRY(mp::output_object_info, type),
+        MP_GLZ_ENTRY(mp::output_object_info, type_data)
         //
     );
 };
@@ -38,8 +39,28 @@ template <> struct glz::meta<mp::output_event> {
     );
 };
 
+template <> struct glz::meta<mp::output_type_data> {
+    using T                     = mp::output_type_data;
+    constexpr static auto value = object(
+        //
+        MP_GLZ_ENTRY(mp::output_type_data, size),
+        MP_GLZ_ENTRY(mp::output_type_data, type),
+        MP_GLZ_ENTRY(mp::output_type_data, field_off),
+        MP_GLZ_ENTRY(mp::output_type_data, field_names),
+        MP_GLZ_ENTRY(mp::output_type_data, field_types),
+        MP_GLZ_ENTRY(mp::output_type_data, field_sizes),
+        MP_GLZ_ENTRY(mp::output_type_data, field_offsets),
+        MP_GLZ_ENTRY(mp::output_type_data, base_off),
+        MP_GLZ_ENTRY(mp::output_type_data, base_types),
+        MP_GLZ_ENTRY(mp::output_type_data, base_sizes),
+        MP_GLZ_ENTRY(mp::output_type_data, base_offsets)
+        //
+    );
+};
 
-template <> struct glz::meta<mp::output_frame_table> {
+
+template <>
+struct glz::meta<mp::output_frame_table> {
     using T                     = mp::output_frame_table;
     constexpr static auto value = object(
         //
@@ -62,6 +83,7 @@ template <> struct glz::meta<mp::output_record> {
     static constexpr auto value = glz::object(
         //
         MP_GLZ_ENTRY(mp::output_record, frame_table),
+        MP_GLZ_ENTRY(mp::output_record, type_data_table),
         MP_GLZ_ENTRY(mp::output_record, event_table),
         MP_GLZ_ENTRY(mp::output_record, strtab)
         //

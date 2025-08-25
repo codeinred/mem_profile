@@ -120,9 +120,8 @@ size_t mp_extract_events(size_t           max_events,
                     event_buffer[event_i++] = {
                         spp_i,
                         info.call_count,
-                        info.type_data->size,
                         (uintptr_t)info.this_ptr,
-                        info.type_data->name,
+                        info.type_data,
                     };
                 }
                 break;
@@ -242,7 +241,7 @@ void mp_unwind_show_trace() {
                            info.tag,
                            info.call_count,
                            info.this_ptr,
-                           type_data.name,
+                           type_data.type,
                            type_data.size,
                            type_data.base_count);
 

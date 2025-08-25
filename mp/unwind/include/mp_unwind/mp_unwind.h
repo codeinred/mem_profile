@@ -1,7 +1,10 @@
 #pragma once
 
-#include <mp_types/types.h>
+#include <mp_hook_prelude.h>
 #include <mp_types/export.h>
+#include <mp_types/types.h>
+
+
 namespace mp {
 
 
@@ -13,14 +16,11 @@ struct event_info {
     /// from other events. This is the id for that event
     ull_t  event_id;
 
-    /// Size of object being acted on
-    size_t object_size;
-
     /// This pointer of object being acted on
     uintptr_t object_ptr;
 
-    /// Name of the object's type
-    char const* object_type_name;
+    /// Type data for the object. Holds object size, object type name, etc
+    _mp_type_data const* type_data;
 };
 
 struct stack_counts {

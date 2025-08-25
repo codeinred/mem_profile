@@ -1,15 +1,30 @@
+#include "mp_hook_prelude.h"
 #include <mem_profile/output_record.h>
 
 
 namespace mp {
+template <class T> auto compute_lookup(std::vector<T> const& values) -> map<T, size_t> {
+    auto lookup = map<T, size_t>(values.size() * 2);
+
+    for (size_t i = 0; i < values.size(); i++) {
+        lookup[values[i]] = i;
+    }
+
+    return lookup;
+}
+
+
 output_record make_output_record(alloc_counter const& source) {
     auto const& events = source.events();
 
+    auto type_data = collect_type_data(events);
+
     auto raw_trace = cpptrace::raw_trace{collect_pcs(events)};
 
-    auto object_trace  = raw_trace.resolve_object_trace();
-    auto stack_trace   = raw_trace.resolve();
-    auto pc_ids_lookup = compute_pc_lookup(raw_trace.frames);
+    auto object_trace     = raw_trace.resolve_object_trace();
+    auto stack_trace      = raw_trace.resolve();
+    auto pc_ids_lookup    = compute_lookup(raw_trace.frames);
+    auto type_data_lookup = compute_lookup(type_data);
 
     stack_trace.print();
 
@@ -20,7 +35,8 @@ output_record make_output_record(alloc_counter const& source) {
                            std::move(raw_trace.frames),
                            object_trace.frames,
                            stack_trace.frames),
-        compute_output_events(strtab, events, pc_ids_lookup),
+        output_type_data(strtab, type_data),
+        compute_output_events(strtab, events, pc_ids_lookup, type_data_lookup),
         std::move(strtab.strtab),
     };
 }
@@ -66,9 +82,11 @@ output_frame_table::output_frame_table(string_table&                            
 }
 
 
-auto compute_output_events(string_table&                    strtab,
-                           std::vector<event_record> const& events,
-                           map<addr_t, size_t> const& pc_ids_lookup) -> std::vector<output_event> {
+auto compute_output_events(string_table&                            strtab,
+                           std::vector<event_record> const&         events,
+                           map<addr_t, size_t> const&               pc_ids_lookup,
+                           map<_mp_type_data const*, size_t> const& type_data_lookup)
+    -> std::vector<output_event> {
     size_t events_size    = events.size();
     auto   output_events  = std::vector<output_event>(events_size);
     auto   event_ordering = compute_event_ordering(events);
@@ -91,7 +109,8 @@ auto compute_output_events(string_table&                    strtab,
             std::move(pc_ids),
         };
         if (!e.object_trace.empty()) {
-            output_events[i].object_info = output_object_info(strtab, e.object_trace);
+            output_events[i].object_info
+                = output_object_info(strtab, e.object_trace, type_data_lookup);
         }
     }
 
@@ -152,15 +171,9 @@ bool is_events_sorted(std::vector<output_event> const& events) {
         events.end(),
         [](output_event const& rhs, output_event const& lhs) { return rhs.id < lhs.id; });
 }
-map<addr_t, size_t> compute_pc_lookup(std::vector<addr_t> const& pcs) {
-    map<addr_t, size_t> pc_ids_lookup(pcs.size() * 2);
 
-    for (size_t i = 0; i < pcs.size(); i++) {
-        pc_ids_lookup[pcs[i]] = i;
-    }
 
-    return pc_ids_lookup;
-}
+
 std::vector<addr_t> collect_pcs(std::vector<event_record> const& events) {
     ankerl::unordered_dense::set<addr_t> pc_set;
     for (auto const& event : events) {
@@ -170,22 +183,104 @@ std::vector<addr_t> collect_pcs(std::vector<event_record> const& events) {
     std::sort(pcs.data(), pcs.data() + pcs.size());
     return pcs;
 }
-output_object_info::output_object_info(string_table&                  strtab,
-                                       std::vector<event_info> const& object_trace)
+
+
+auto collect_type_data(std::vector<event_record> const& events)
+    -> std::vector<_mp_type_data const*> {
+    set<_mp_type_data const*> type_data;
+    type_data.max_load_factor(0.5);
+
+    for (auto const& e : events) {
+        for (auto const& obj : e.object_trace) {
+            type_data.insert(obj.type_data);
+        }
+    }
+
+    std::vector<_mp_type_data const*> values(type_data.begin(), type_data.end());
+    // Sorting it now will help enable better cache locality when we access it later
+    std::sort(values.begin(), values.end());
+    return values;
+}
+
+
+output_object_info::output_object_info(string_table&                            strtab,
+                                       std::vector<event_info> const&           object_trace,
+                                       map<_mp_type_data const*, size_t> const& type_data_lookup)
   : trace_index(object_trace.size())
   , object_id(object_trace.size())
   , addr(object_trace.size())
   , size(object_trace.size())
-  , type(object_trace.size()) {
+  , type(object_trace.size())
+  , type_data(object_trace.size()) {
     size_t i = 0;
     for (auto const& event : object_trace) {
         trace_index[i] = event.trace_index;
         object_id[i]   = event.event_id;
         addr[i]        = event.object_ptr;
-        size[i]        = event.object_size;
-        type[i]        = strtab.insert_cstr(event.object_type_name);
+        size[i]        = event.type_data->size;
+        type[i]        = strtab.insert_cstr(event.type_data->type);
+        type_data[i]   = type_data_lookup.at(event.type_data);
         ++i;
     }
 }
 
+
+output_type_data::output_type_data(string_table&                            strtab,
+                                   std::vector<_mp_type_data const*> const& type_data)
+  : size(type_data.size())
+  , type(type_data.size())
+  , field_off(type_data.size() + 1)
+  , base_off(type_data.size() + 1) {
+
+    size_t count        = type_data.size();
+    size_t total_fields = 0;
+    size_t total_bases  = 0;
+    for (size_t i = 0; i < count; i++) {
+        auto const& ent = *type_data[i];
+        size[i]         = ent.size;
+        type[i]         = strtab.insert_cstr(ent.type);
+
+        total_fields += ent.field_count;
+        total_bases += ent.base_count;
+        field_off[i + 1] = total_fields;
+        base_off[i + 1]  = total_bases;
+    }
+
+
+    // Fill in data related to the fields and bases of each type
+
+    field_names.resize(total_fields);
+    field_types.resize(total_fields);
+    field_sizes.resize(total_fields);
+    field_offsets.resize(total_fields);
+
+    base_types.resize(total_bases);
+    base_sizes.resize(total_bases);
+    base_offsets.resize(total_bases);
+
+    size_t field_i = 0;
+    size_t base_i  = 0;
+    for (size_t i = 0; i < count; i++) {
+        auto const& ent         = *type_data[i];
+        size_t      field_count = ent.field_count;
+        size_t      base_count  = ent.base_count;
+
+        std::copy_n(ent.field_sizes, field_count, field_sizes.data() + field_i);
+        std::copy_n(ent.field_offsets, field_count, field_offsets.data() + field_i);
+
+        for (size_t j = 0; j < field_count; j++) {
+            field_names[field_i + j] = strtab.insert_cstr(ent.field_names[j]);
+            field_types[field_i + j] = strtab.insert_cstr(ent.field_types[j]);
+        }
+
+        std::copy_n(ent.base_sizes, base_count, base_sizes.data() + base_i);
+        std::copy_n(ent.base_offsets, base_count, base_offsets.data() + base_i);
+
+        for (size_t j = 0; j < base_count; j++) {
+            base_types[base_i + j] = strtab.insert_cstr(ent.base_types[j]);
+        }
+        field_i += field_count;
+        base_i += base_count;
+    }
+}
 } // namespace mp

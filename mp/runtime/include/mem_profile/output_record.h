@@ -12,6 +12,7 @@
 
 namespace mp {
 using ankerl::unordered_dense::map;
+using ankerl::unordered_dense::set;
 
 struct string_table {
     std::vector<std::string>           strtab;
@@ -72,7 +73,12 @@ struct output_object_info {
     /// Index into string table - name of the object's type
     std::vector<str_index_t> type;
 
-    output_object_info(string_table& strtab, std::vector<event_info> const& object_trace);
+    /// Index into type data table
+    std::vector<size_t> type_data;
+
+    output_object_info(string_table&                            strtab,
+                       std::vector<event_info> const&           object_trace,
+                       map<_mp_type_data const*, size_t> const& type_data_lookup);
 };
 
 
@@ -98,6 +104,47 @@ struct output_event {
     std::vector<size_t> pc_id;
 
     std::optional<output_object_info> object_info;
+};
+
+
+struct output_type_data {
+    /// size[i] is the size of the i-th type in the table
+    std::vector<size_t>      size;
+    /// type[i] is the typename of the i-th type in the table
+    std::vector<str_index_t> type;
+
+    /// Each time has 0 or more fields.
+    ///
+    /// For a given type i,
+    /// let slice = field_off[i]..field_off[i + 1].
+    ///
+    ///
+    /// Then
+    /// - `field_names[slice]` is the name of each field for type i
+    /// - `field_types[slice]` is the type of each field for type i
+    /// - `field_sizes[slice]` is the size of each field for type i
+    /// - `field_offsets[slice]` is the offset of each field for type i
+    std::vector<size_t>      field_off;
+    std::vector<str_index_t> field_names;
+    std::vector<str_index_t> field_types;
+    std::vector<size_t>      field_sizes;
+    std::vector<size_t>      field_offsets;
+
+    /// Each type has 0 or more bases.
+    ///
+    /// For a given type i,
+    /// let slice = base_off[i]..base_off[i + 1].
+    ///
+    /// Then
+    /// - `base_types[slice]` is the type of each base of type i
+    /// - `base_sizes[slice]` is the size of each base of type i
+    /// - `base_offsets[slice]` is the offset of each base of type i
+    std::vector<size_t>      base_off;
+    std::vector<str_index_t> base_types;
+    std::vector<size_t>      base_sizes;
+    std::vector<size_t>      base_offsets;
+
+    output_type_data(string_table& strtab, std::vector<_mp_type_data const*> const& type_data);
 };
 
 
@@ -159,6 +206,9 @@ struct output_record {
     /// Holds entries in the stacktrace.
     output_frame_table frame_table;
 
+    /// Holds type information: type names, type sizes, fields, etc
+    output_type_data type_data_table;
+
     /// Vector of events
     std::vector<output_event> event_table;
 
@@ -181,16 +231,17 @@ auto is_events_sorted(std::vector<output_event> const& events) -> bool;
 /// Fill in the size of 'FREE' events, based on the size of the corresponding allocation
 auto compute_free_sizes(std::vector<output_event>& output_events) -> void;
 
-auto compute_output_events(string_table&                    strtab,
-                           std::vector<event_record> const& events,
-                           map<addr_t, size_t> const& pc_ids_lookup) -> std::vector<output_event>;
+auto compute_output_events(string_table&                            strtab,
+                           std::vector<event_record> const&         events,
+                           map<addr_t, size_t> const&               pc_ids_lookup,
+                           map<_mp_type_data const*, size_t> const& type_data_lookup)
+    -> std::vector<output_event>;
 
 /// Computes a sorted list of all program counters that appear in the event records
 auto collect_pcs(std::vector<event_record> const& events) -> std::vector<addr_t>;
 
-/// Given a table of program counters, computes a mapping of each program counter
-/// to it's index in the table.
-auto compute_pc_lookup(std::vector<addr_t> const& pcs) -> map<addr_t, size_t>;
+auto collect_type_data(std::vector<event_record> const& events)
+    -> std::vector<_mp_type_data const*>;
 
 /// Given the allocations that have occurred over the lifetime of the program,
 /// produce an `output_record` - a compact serializable representation of that data

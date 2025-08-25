@@ -9,7 +9,7 @@ struct _mp_type_data {
     using size_t = __SIZE_TYPE__;
 
     size_t      size;
-    char const* name;
+    char const* type;
 
     size_t base_count;
     size_t field_count;
