@@ -56,13 +56,25 @@ output_frame_table::output_frame_table(string_table&                            
   , is_inline(stack_frames.size()) {
     run_sanity_check_on_frames(pc.size(), stack_frames);
 
+    constexpr static int DL_INFO_BAD = 0;
+
     MP_ASSERT_EQ(pc.size(),
                  object_frames.size(),
                  "Expected 1-to-1 relation betwween object frames and program counters");
 
+    std::vector<Dl_info> dl_info(pc.size());
+
     for (size_t i = 0; i < pc.size(); i++) {
-        object_path[i]    = strtab.insert(object_frames[i].object_path);
-        object_address[i] = object_frames[i].object_address;
+        auto& info = dl_info[i];
+        if (dladdr((const void*)pc[i], &info)) {
+            object_path[i]    = strtab.insert_cstr(info.dli_fname);
+            object_address[i] = pc[i] - uintptr_t(info.dli_fbase);
+        } else {
+            info = {nullptr, nullptr, nullptr, nullptr};
+
+            object_path[i]    = strtab.insert(object_frames[i].object_path);
+            object_address[i] = object_frames[i].object_address;
+        }
     }
 
     size_t trace_size = stack_frames.size();
@@ -77,20 +89,13 @@ output_frame_table::output_frame_table(string_table&                            
 
         // Occasionally, cpptrace gives us incorrect info (eg, empty/missing symbol, invalid object address)
         // We will use `dladdr` to attempt to repair this information as best we can.
-        bool info_needs_repair = object_address[pc_i] == 0 || frame.symbol.empty();
+        bool info_needs_repair = object_frames[pc_i].object_address == 0 || frame.symbol.empty();
 
         if (info_needs_repair) {
-            Dl_info info;
+            Dl_info info = dl_info[pc_i];
 
-            if (dladdr((const void*)frame.raw_address, &info)) {
-                if (info.dli_fname) file[i] = strtab.insert_cstr(info.dli_fname);
-                if (info.dli_sname) func[i] = strtab.insert(cpptrace::demangle(info.dli_sname));
-                // Fix the object_path and object_address
-                if (info.dli_fname) {
-                    object_path[pc_i]    = strtab.insert_cstr(info.dli_fname);
-                    object_address[pc_i] = frame.raw_address - uintptr_t(info.dli_fbase);
-                }
-            }
+            if (info.dli_fname) file[i] = strtab.insert_cstr(info.dli_fname);
+            if (info.dli_sname) func[i] = strtab.insert(cpptrace::demangle(info.dli_sname));
         }
 
         // If we finally encountered our non-inline frame, update the offsets
