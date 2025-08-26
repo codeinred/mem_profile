@@ -64,6 +64,7 @@ build_test_file test_file: build
         -Imp/types/include \
         -Imp/unwind/include \
         -Imp/core/include \
+        -Imp/hook_prelude/include \
         --include={{cwd}}/mp/hook_prelude/include/mp_hook_prelude.h \
         -fplugin=build/libmp_plugin.{{lib_ext}} \
         -Xclang=-add-plugin \
