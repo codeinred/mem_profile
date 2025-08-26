@@ -145,6 +145,7 @@ void dump(u64 const* block, size_t size) {
 
 void mp_unwind_show_trace() {
 // These macros are colored tags used for printing
+#define s_reg_ip MP_COLOR_BB "reg_ip:" MP_COLOR_Re
 #define s_frame_start MP_COLOR_BB "frame_start:" MP_COLOR_Re
 #define s_frame_end MP_COLOR_BB "frame_end:" MP_COLOR_Re
 #define s_frame_size MP_COLOR_BB "frame_size:" MP_COLOR_Re
@@ -199,6 +200,9 @@ void mp_unwind_show_trace() {
         auto const& name        = names[i];
 
         printf("%s%s%s\n", BG, name.c_str(), Re);
+        printf("├── " s_reg_ip "      %-16lu   " MP_COLOR_GRAY "# 0x%016lx\n" MP_COLOR_Re,
+               ipp[i],
+               ipp[i]);
         printf("├── " s_frame_start " %-16lu   " MP_COLOR_GRAY "# 0x%016lx\n" MP_COLOR_Re,
                frame_start,
                frame_start);
