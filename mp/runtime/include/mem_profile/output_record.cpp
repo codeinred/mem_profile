@@ -48,6 +48,7 @@ output_frame_table::output_frame_table(string_table&                            
   : pc(std::move(pcs))
   , object_path(pc.size())
   , object_address(pc.size())
+  , object_symbol(pc.size())
   , offsets(pc.size() + 1)
   , file(stack_frames.size())
   , func(stack_frames.size())
@@ -55,8 +56,6 @@ output_frame_table::output_frame_table(string_table&                            
   , column(stack_frames.size())
   , is_inline(stack_frames.size()) {
     run_sanity_check_on_frames(pc.size(), stack_frames);
-
-    constexpr static int DL_INFO_BAD = 0;
 
     MP_ASSERT_EQ(pc.size(),
                  object_frames.size(),
@@ -69,11 +68,13 @@ output_frame_table::output_frame_table(string_table&                            
         if (dladdr((const void*)pc[i], &info)) {
             object_path[i]    = strtab.insert_cstr(info.dli_fname);
             object_address[i] = pc[i] - uintptr_t(info.dli_fbase);
+            object_symbol[i]  = strtab.insert_cstr(info.dli_sname);
         } else {
             info = {nullptr, nullptr, nullptr, nullptr};
 
             object_path[i]    = strtab.insert(object_frames[i].object_path);
             object_address[i] = object_frames[i].object_address;
+            object_symbol[i]  = strtab.insert_cstr("");
         }
     }
 

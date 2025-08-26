@@ -59,14 +59,14 @@ template <> struct glz::meta<mp::output_type_data> {
 };
 
 
-template <>
-struct glz::meta<mp::output_frame_table> {
+template <> struct glz::meta<mp::output_frame_table> {
     using T                     = mp::output_frame_table;
     constexpr static auto value = object(
         //
         MP_GLZ_ENTRY(mp::output_frame_table, pc),
         MP_GLZ_ENTRY(mp::output_frame_table, object_path),
         MP_GLZ_ENTRY(mp::output_frame_table, object_address),
+        MP_GLZ_ENTRY(mp::output_frame_table, object_symbol),
         MP_GLZ_ENTRY(mp::output_frame_table, offsets),
         MP_GLZ_ENTRY(mp::output_frame_table, file),
         MP_GLZ_ENTRY(mp::output_frame_table, func),

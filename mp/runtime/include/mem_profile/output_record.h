@@ -158,6 +158,8 @@ struct output_frame_table {
     /// Address within the object
     std::vector<addr_t> object_address;
 
+    /// Symbol name within the object (value returned by dladdr)
+    std::vector<str_index_t> object_symbol;
 
 
     /// Each program counter corresponds to 1 or more frames.
