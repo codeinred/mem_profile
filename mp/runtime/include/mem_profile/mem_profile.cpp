@@ -1,9 +1,9 @@
 ////////////////////////////////////////
 ////  Counters and global contexts  ////
 ////////////////////////////////////////
+#include <mem_profile/env.h>
 #include <mem_profile/prelude.h>
 #include <mp_types/export.h>
-#include <mem_profile/env.h>
 
 
 namespace mp {
@@ -100,24 +100,23 @@ std::atomic_uint64_t EVENT_COUNTER = 0;
         }                                                                                          \
     }
 
-#define RECORD_ALLOC_WITH_OBJECT_INFO(_type, _alloc_size, _alloc_ptr, _alloc_hint)                 \
-    if (mp::tracing_enabled()) {                                                                   \
-        auto& context = mp::LOCAL_CONTEXT;                                                         \
-        if (context.nest_level == 0) {                                                             \
-            auto guard = context.inc_nested();                                                     \
-            mp_unwind_show_trace();                                                                \
-                                                                                                   \
-            mp::addr_t trace_buff[BACKTRACE_BUFFER_SIZE];                                          \
-            mp::addr_t spp_buff[BACKTRACE_BUFFER_SIZE];                                            \
-            size_t     trace_size = mp::mp_unwind(BACKTRACE_BUFFER_SIZE, trace_buff, spp_buff);    \
-            context.counter.record_alloc_with_events(EVENT_COUNTER++,                              \
-                                                     _type,                                        \
-                                                     _alloc_size,                                  \
-                                                     _alloc_ptr,                                   \
-                                                     _alloc_hint,                                  \
-                                                     trace_view{trace_buff, trace_size},           \
-                                                     trace_view{spp_buff, trace_size});            \
-        }                                                                                          \
+#define RECORD_ALLOC_WITH_OBJECT_INFO(_type, _alloc_size, _alloc_ptr, _alloc_hint)                      \
+    if (mp::tracing_enabled()) {                                                                        \
+        auto& context = mp::LOCAL_CONTEXT;                                                              \
+        if (context.nest_level == 0) {                                                                  \
+            auto guard = context.inc_nested();                                                          \
+                                                                                                        \
+            mp::addr_t trace_buff[BACKTRACE_BUFFER_SIZE];                                               \
+            mp::addr_t spp_buff[BACKTRACE_BUFFER_SIZE];                                                 \
+            size_t     trace_size = mp::mp_unwind(BACKTRACE_BUFFER_SIZE, trace_buff, spp_buff);         \
+            context.counter.record_alloc_with_events(EVENT_COUNTER++,                                   \
+                                                     _type,                                             \
+                                                     _alloc_size,                                       \
+                                                     _alloc_ptr,                                        \
+                                                     _alloc_hint,                                       \
+                                                     trace_view{trace_buff, trace_size},                \
+                                                     trace_view{spp_buff, trace_size});                 \
+        }                                                                                               \
     }
 
 
