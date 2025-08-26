@@ -27,6 +27,8 @@ M = "\033[35m"  # Magenta
 C = "\033[36m"  # Cyan
 W = "\033[37m"  # White
 
+Grey = "\033[38;2;130;130;120m"
+
 BOLD_BL = "\033[30;1m"  # Black
 BOLD_R = "\033[31;1m"  # Red
 BOLD_G = "\033[32;1m"  # Green
@@ -90,6 +92,8 @@ def cyan(input: typing.Any) -> Styled:
 def white(input: typing.Any) -> Styled:
     return Styled(W, input)
 
+def grey(input: typing.Any) -> Styled:
+    return Styled(Grey, input)
 
 def bold_black(input: typing.Any) -> Styled:
     return Styled(BOLD_BL, input)

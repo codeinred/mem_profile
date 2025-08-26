@@ -31,7 +31,7 @@ def ptr(x: int) -> str:
 def print_event_trace(
     record: OutputRecord, event_id: int, file: typing.IO | None = None,
     skip_inline = True,
-    show_bin_addr = False
+    show_bin_addr = True
 ):
     event = record.event_table[event_id]
     objects = event.expand_objects(record)
@@ -43,6 +43,7 @@ def print_event_trace(
         pc = frame_table.pc[pid]
         object_path = record.get_object_path(pid)
         object_addr = record.get_object_address(pid)
+        object_sym = record.get_object_symbol(pid)
 
         object_str = f"{object_path}+0x{object_addr:x}"
 
@@ -66,6 +67,7 @@ def print_event_trace(
 
         if show_bin_addr:
             last_ent.append(f"{bb_yellow(object_str)}")
+            last_ent.append(f"{grey(object_sym)}")
 
         frames.extend(ent)
 

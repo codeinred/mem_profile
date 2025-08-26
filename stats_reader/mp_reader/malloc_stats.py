@@ -132,6 +132,10 @@ class OutputFrameTable:
     object_path: list[str_index_t]
     # Address within the object
     object_address: list[addr_t]
+    # Symbol corresponding to the function associated tith this program counter
+    # (usually the mangled name of a function, etc)
+    object_symbol: list[str_index_t]
+
     # Frame boundary offsets (length = pc.length + 1)
     offsets: list[size_t]
     # Source file indices into string table
@@ -192,6 +196,9 @@ class OutputRecord:
     def get_object_address(self, i: int) -> int:
         """Address within executable or library where function was found during trace"""
         return self.frame_table.object_address[i]
+
+    def get_object_symbol(self, i: int) -> int:
+        return self.strtab[self.frame_table.object_symbol[i]]
 
     def get_frames(self, i: int) -> slice:
         return slice(self.frame_table.offsets[i], self.frame_table.offsets[i + 1])
