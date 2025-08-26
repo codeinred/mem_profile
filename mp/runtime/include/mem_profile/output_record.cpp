@@ -27,8 +27,6 @@ output_record make_output_record(alloc_counter const& source) {
     auto pc_ids_lookup    = compute_lookup(raw_trace.frames);
     auto type_data_lookup = compute_lookup(type_data);
 
-    stack_trace.print();
-
     string_table strtab;
 
     return output_record{
@@ -71,11 +69,11 @@ output_frame_table::output_frame_table(string_table&                            
     size_t pc_i       = 0;
     for (size_t i = 0; i < trace_size; i++) {
         auto const& frame = stack_frames[i];
-        column[i]    = frame.column.value_or(0);
-        line[i]      = frame.line.value_or(0);
-        file[i]      = strtab.insert(frame.filename);
-        func[i]      = strtab.insert(frame.symbol);
-        is_inline[i] = frame.is_inline;
+        column[i]         = frame.column.value_or(0);
+        line[i]           = frame.line.value_or(0);
+        file[i]           = strtab.insert(frame.filename);
+        func[i]           = strtab.insert(frame.symbol);
+        is_inline[i]      = frame.is_inline;
 
         // Occasionally, cpptrace gives us incorrect info (eg, empty/missing symbol, invalid object address)
         // We will use `dladdr` to attempt to repair this information as best we can.
