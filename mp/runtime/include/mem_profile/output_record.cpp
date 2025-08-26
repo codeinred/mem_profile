@@ -1,6 +1,7 @@
 #include "mp_hook_prelude.h"
 #include <mem_profile/output_record.h>
 
+#include <dlfcn.h>
 
 namespace mp {
 template <class T> auto compute_lookup(std::vector<T> const& values) -> map<T, size_t> {
@@ -70,14 +71,37 @@ output_frame_table::output_frame_table(string_table&                            
     size_t pc_i       = 0;
     for (size_t i = 0; i < trace_size; i++) {
         auto const& frame = stack_frames[i];
-        if (!frame.is_inline) {
-            offsets[++pc_i] = i + 1;
-        }
         column[i]    = frame.column.value_or(0);
         line[i]      = frame.line.value_or(0);
         file[i]      = strtab.insert(frame.filename);
         func[i]      = strtab.insert(frame.symbol);
         is_inline[i] = frame.is_inline;
+
+        // Occasionally, cpptrace gives us incorrect info (eg, empty/missing symbol, invalid object address)
+        // We will use `dladdr` to attempt to repair this information as best we can.
+        bool info_needs_repair = object_address[pc_i] == 0 || frame.symbol.empty();
+
+        if (info_needs_repair) {
+            Dl_info info;
+
+            if (dladdr((const void*)frame.raw_address, &info)) {
+                fmt::println("Frame with no symbol @ {} - using dli_sname={}",
+                             frame.raw_address,
+                             info.dli_sname);
+                if (info.dli_fname) file[i] = strtab.insert_cstr(info.dli_fname);
+                if (info.dli_sname) func[i] = strtab.insert(cpptrace::demangle(info.dli_sname));
+                // Fix the object_path and object_address
+                if (info.dli_fname) {
+                    object_path[pc_i]    = strtab.insert_cstr(info.dli_fname);
+                    object_address[pc_i] = frame.raw_address - uintptr_t(info.dli_fbase);
+                }
+            }
+        }
+
+        // If we finally encountered our non-inline frame, update the offsets
+        if (!frame.is_inline) {
+            offsets[++pc_i] = i + 1;
+        }
     }
 }
 
