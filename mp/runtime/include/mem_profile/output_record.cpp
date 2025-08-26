@@ -85,9 +85,6 @@ output_frame_table::output_frame_table(string_table&                            
             Dl_info info;
 
             if (dladdr((const void*)frame.raw_address, &info)) {
-                fmt::println("Frame with no symbol @ {} - using dli_sname={}",
-                             frame.raw_address,
-                             info.dli_sname);
                 if (info.dli_fname) file[i] = strtab.insert_cstr(info.dli_fname);
                 if (info.dli_sname) func[i] = strtab.insert(cpptrace::demangle(info.dli_sname));
                 // Fix the object_path and object_address
