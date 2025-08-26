@@ -67,7 +67,44 @@ class OutputObjectInfo:
     size: list[size_t]
     # Type name indices into string table
     type: list[str_index_t]
+    # Index into type data table for each entry
+    type_data: list[size_t]
 
+
+@dataclass
+class OutputTypeData:
+    """
+    Type data table for the given OutputRecord.
+
+    Holds information about object types, sizes, fields, and offsets
+    """
+
+    # Type size
+    size: list[size_t]
+
+    # Type name
+    type: list[str_index_t]
+
+    # Offsets into field table
+    field_off: list[size_t]
+
+    field_names: list[str_index_t]
+    field_types: list[str_index_t]
+    field_sizes: list[size_t]
+    field_offsets: list[size_t]
+
+    base_off: list[size_t]
+    base_types: list[str_index_t]
+    base_sizes: list[size_t]
+    base_offsets: list[size_t]
+
+    def field_slice(self, i: int) -> slice:
+        """Return the fields corresponding to the given index into the type data table"""
+        return slice(self.field_off[i], self.field_off[i+1])
+
+    def base_slice(self, i: int) -> slice:
+        """Return the bases corresponding to the given index into the type data table"""
+        return slice(self.base_off[i], self.base_off[i+1])
 
 
 def get_offset(parent_range: range, addr: int) -> addr_t | None:
@@ -169,10 +206,16 @@ class OutputRecord:
 
     # Stack frame information
     frame_table: OutputFrameTable
+    # Type data for each recorded type
+    type_data_table: OutputTypeData
     # Chronological list of memory events
     event_table: list[OutputEvent]
     # Centralized string storage
     strtab: list[str]
+
+    def strs(self, ii: list[str_index_t]) -> list[str]:
+        """Get the list of strings associated with a list of indices into the string table"""
+        return [self.strtab[i] for i in ii]
 
     def get_loc(self, pc_id: int) -> list[str]:
         offsets = self.frame_table.offsets
@@ -205,10 +248,10 @@ class OutputRecord:
 
     def get_files(self, i: int) -> list[str]:
         """List of source files associated with an index into the frame table"""
-        return [self.strtab[f] for f in self.frame_table.file[self.get_frames(i)]]
+        return self.strs(self.frame_table.file[self.get_frames(i)])
 
     def get_funcs(self, i: int) -> list[str]:
-        return [self.strtab[f] for f in self.frame_table.func[self.get_frames(i)]]
+        return self.strs(self.frame_table.func[self.get_frames(i)])
 
     def get_lines(self, i: int) -> list[int]:
         return self.frame_table.line[self.get_frames(i)]
@@ -229,6 +272,53 @@ class OutputRecord:
                 self.get_is_inline(i),
             )
         )
+
+
+
+    def get_type_name(self, type_i: int) -> str:
+        """Get the name of the given type, by the type index"""
+        return self.strtab[self.type_data_table.type[type_i]]
+
+    def get_type_size(self, type_i: int) -> size_t:
+        """Get the size of the given type, by the type index"""
+        return self.type_data_table.size[type_i]
+
+    def get_field_slice(self, type_i: int) -> slice:
+        """Get the slice into the field table for the given type, by the type index"""
+        return self.type_data_table.field_slice(type_i)
+
+    def get_base_slice(self, type_i: int) -> slice:
+        """Get the slice into the base table for the given type, by the type index"""
+        return self.type_data_table.base_slice(type_i)
+
+    def get_field_names(self, type_i: int) -> list[str]:
+        """Get the list of fields for a given type, by the type index"""
+        return self.strs(self.type_data_table.field_names[self.get_field_slice(type_i)])
+
+    def get_field_types(self, type_i: int) -> list[str]:
+        """Get the list of field types for a given type, by the type index"""
+        return self.strs(self.type_data_table.field_types[self.get_field_slice(type_i)])
+
+    def get_field_sizes(self, type_i: int) -> list[size_t]:
+        """Get the list of field sizes for a given type, by the type index"""
+        return self.type_data_table.field_sizes[self.get_field_slice(type_i)]
+
+    def get_field_offsets(self, type_i: int) -> list[size_t]:
+        """Get the list of field offsets for a given type, by the type index"""
+        return self.type_data_table.field_offsets[self.get_field_slice(type_i)]
+
+    def get_base_types(self, type_i: int) -> list[str]:
+        """Get the list of base class types for a given type, by the type index"""
+        return self.strs(self.type_data_table.base_types[self.get_base_slice(type_i)])
+
+    def get_base_sizes(self, type_i: int) -> list[size_t]:
+        """Get the list of base class sizes for a given type, by the type index"""
+        return self.type_data_table.base_sizes[self.get_base_slice(type_i)]
+
+    def get_base_offsets(self, type_i: int) -> list[size_t]:
+        """Get the list of base class offsets for a given type, by the type index"""
+        return self.type_data_table.base_offsets[self.get_base_slice(type_i)]
+
 
 
 
