@@ -10,7 +10,7 @@ from .color import *
 from itertools import starmap
 
 
-def _loc_lines(loc: Loc) -> list[str]:
+def _loc_lines(loc: Loc) -> list[str | Styled]:
     s = f"{bb_green(loc.file)}"
     if loc.col != 0:
         s += f":{bb_blue(loc.line)}:{bb_blue(loc.col)}"
@@ -29,9 +29,11 @@ def ptr(x: int) -> str:
 
 
 def print_event_trace(
-    record: OutputRecord, event_id: int, file: typing.IO | None = None,
-    skip_inline = True,
-    show_bin_addr = True
+    record: OutputRecord,
+    event_id: int,
+    file: typing.IO | None = None,
+    skip_inline=True,
+    show_bin_addr=True,
 ):
     event = record.event_table[event_id]
     objects = event.expand_objects(record)
@@ -61,9 +63,7 @@ def print_event_trace(
             if obj.offset is not None:
                 s += f" offset={bb_blue(obj.offset)}"
             s += f" size={bb_green(obj.size)} type={bb_magenta(obj.type)}"
-            last_ent.append(
-                s
-            )
+            last_ent.append(s)
 
         if show_bin_addr:
             last_ent.append(f"{bb_yellow(object_str)}")
@@ -97,7 +97,7 @@ def get_objects(record: OutputRecord) -> dict[int, ObjectTree]:
 
     for event in record.event_table:
         object_info = event.object_info
-        children = []
+        children: list[ObjectTree] = []
         if object_info is not None:
             children = []
             for object_id, addr, size, trace_index, type in zip(

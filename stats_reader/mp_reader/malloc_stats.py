@@ -38,11 +38,20 @@ class ObjectEnt:
     """Represents a specific object, with fields expanded/dereferenced"""
 
     object_id: u64
+    """Unique ID of the object. This is unique over the lifetime of the program,
+    even if the address is not."""
+
     addr: addr_t
+    """Address of the object"""
+
     size: size_t
-    """Offset of this object, within it's parent"""
+    """Size of this object"""
+
     offset: addr_t | None
+    """Offset of this object, within it's parent"""
+
     type: str
+    """Type of the object, expressed as a string"""
 
     def mem_range(self) -> range:
         return range(self.addr, self.addr + self.size)
@@ -57,18 +66,23 @@ class OutputObjectInfo:
     destructor calls are recorded via trace_index.
     """
 
-    # Indices into event.pc_id array - which stack frames have destructors
     trace_index: list[size_t]
-    # Unique object identifiers (lifetime-unique)
+    """Indices into event.pc_id array - which stack frames have destructors"""
+
     object_id: list[u64]
-    # Object addresses (this pointers at destruction)
+    """Unique object identifiers (lifetime-unique)"""
+
     addr: list[addr_t]
-    # Object sizes in bytes
+    """Object addresses (this pointers at destruction)"""
+
     size: list[size_t]
-    # Type name indices into string table
+    """Object sizes in bytes"""
+
     type: list[str_index_t]
-    # Index into type data table for each entry
+    """Type name indices into string table"""
+
     type_data: list[size_t]
+    """Index into type data table for each entry"""
 
 
 @dataclass
@@ -79,24 +93,38 @@ class OutputTypeData:
     Holds information about object types, sizes, fields, and offsets
     """
 
-    # Type size
     size: list[size_t]
+    """size[i] is the size of the i-th type entry"""
 
-    # Type name
     type: list[str_index_t]
+    """type[i] is the name of the i-th type entry, as a string"""
 
-    # Offsets into field table
     field_off: list[size_t]
+    """`slice(field_off[i], field_off[i+1])` corresponts to the fields for the i-th type entry"""
 
     field_names: list[str_index_t]
+    """Field name table. Field names for the i-th type entry are given by `field_names[field_slice(i)]`"""
+
     field_types: list[str_index_t]
+    """Field type table. Field typenames for the i-th type entry are given by `field_types[field_slice(i)]`"""
+
     field_sizes: list[size_t]
+    """Field size table. Field sizes for the i-th type entry are given by `field_sizes[field_slice(i)]`"""
+
     field_offsets: list[size_t]
+    """Field offsets table. Field offsets (relative to the start of the object, in memory) for the i-th type entry are given by `field_offsets[field_slice(i)]`"""
 
     base_off: list[size_t]
+    """`slice(base_off[i], base_off[i+1])` corresponds to the bases for the i-th type entry"""
+
     base_types: list[str_index_t]
+    """Base type table. Base typenames for the i-th type entry are given by `base_types[base_slice(i)]`"""
+
     base_sizes: list[size_t]
+    """Base size table. Base sizes for the i-th type entry are given by `base_sizes[base_slice(i)]`"""
+
     base_offsets: list[size_t]
+    """Base offsets table. Base offsets (relative to the start of the object, in memory) for the i-th type entry are given by `base_offsets[base_slice(i)]`"""
 
     def field_slice(self, i: int) -> slice:
         """Return the fields corresponding to the given index into the type data table"""
@@ -105,6 +133,36 @@ class OutputTypeData:
     def base_slice(self, i: int) -> slice:
         """Return the bases corresponding to the given index into the type data table"""
         return slice(self.base_off[i], self.base_off[i+1])
+
+    def num_entries(self) -> int:
+        return len(self.size)
+
+@dataclass
+class TypeData:
+    size: int
+    """Size of the type, in bytes"""
+    name: str
+    """Typename of the type. Derived from OutputTypeData.type"""
+
+    field_names: list[str]
+    """List of field names"""
+
+    field_types: list[str]
+    """List of field types"""
+
+    field_sizes: list[int]
+    """List of field sizes"""
+    field_offsets: list[int]
+    """List of field offsets, relative to the start of the object in memory"""
+
+    base_types: list[str]
+    """List of base types"""
+
+    base_sizes: list[int]
+    """List of base sizes"""
+
+    base_offsets: list[int]
+    """List of base offsets, relative to the start of the object in memory"""
 
 
 def get_offset(parent_range: range, addr: int) -> addr_t | None:
@@ -139,7 +197,7 @@ class OutputEvent:
 
     def expand_objects(self, ctx: "OutputRecord") -> list[ObjectEnt | None]:
         """Returns a list of entries the same length as the pc_ids, with all objects filled in"""
-        entries = [None] * len(self.pc_id)
+        entries: list[ObjectEnt | None] = [None] * len(self.pc_id)
         object_info = self.object_info
         if object_info is not None:
             parent_range = range(0, 0)
@@ -240,7 +298,7 @@ class OutputRecord:
         """Address within executable or library where function was found during trace"""
         return self.frame_table.object_address[i]
 
-    def get_object_symbol(self, i: int) -> int:
+    def get_object_symbol(self, i: int) -> str:
         return self.strtab[self.frame_table.object_symbol[i]]
 
     def get_frames(self, i: int) -> slice:
@@ -261,6 +319,7 @@ class OutputRecord:
 
     def get_is_inline(self, i: int) -> list[bool]:
         return self.frame_table.is_inline[self.get_frames(i)]
+
     def get_locs(self, i: int) -> list[Loc]:
         return list(
             map(
@@ -272,7 +331,6 @@ class OutputRecord:
                 self.get_is_inline(i),
             )
         )
-
 
 
     def get_type_name(self, type_i: int) -> str:
@@ -320,6 +378,23 @@ class OutputRecord:
         return self.type_data_table.base_offsets[self.get_base_slice(type_i)]
 
 
+    def get_type_data_at(self, i: int) -> TypeData:
+        return TypeData(
+            size=self.get_type_size(i),
+            name=self.get_type_name(i),
+            field_names=self.get_field_names(i),
+            field_types=self.get_field_types(i),
+            field_sizes=self.get_field_sizes(i),
+            field_offsets=self.get_field_offsets(i),
+            base_types=self.get_base_types(i),
+            base_sizes=self.get_base_sizes(i),
+            base_offsets=self.get_base_offsets(i),
+        )
+
+    def get_type_data(self) -> list[TypeData]:
+        return list(
+            map(self.get_type_data_at, range(self.type_data_table.num_entries()))
+        )
 
 
 
