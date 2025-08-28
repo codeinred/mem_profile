@@ -14,5 +14,6 @@ print-objects = "mp_reader.__main__:main"
 
 [dependency-groups]
 dev = [
+    "mypy>=1.17.1",
     "pytest>=8.4.1",
 ]
