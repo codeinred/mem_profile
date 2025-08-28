@@ -1,10 +1,6 @@
 #ifndef MP_HOOK_PRELUDE_H
 #define MP_HOOK_PRELUDE_H
 
-#include <new>
-
-extern "C" int printf(const char*, ...);
-
 struct _mp_type_data {
     using size_t = __SIZE_TYPE__;
 
@@ -58,12 +54,5 @@ inline void save_state(void* this_ptr, void* alloca_block, _mp_type_data const& 
     };
     __builtin_memcpy(alloca_block, &result, sizeof(result));
     asm volatile("" : : "r"(alloca_block) : "memory");
-
-    //printf("save_state(%p, %p, %lu, %s) count=%llu\n",
-    //       this_ptr,
-    //       alloca_block,
-    //       this_size,
-    //       type_name,
-    //       _frame->call_count);
 }
 #endif
