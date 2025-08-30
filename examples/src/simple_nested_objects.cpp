@@ -25,4 +25,4 @@ struct my_object {
 struct super_object : my_object {};
 } // namespace test
 
-int main() { test::super_object o; }
+int main() { std::vector<test::super_object> o(100); }
