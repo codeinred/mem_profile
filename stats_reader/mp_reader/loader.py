@@ -7,6 +7,7 @@ from pathlib import Path
 import cattrs
 
 from .malloc_stats import OutputRecord, OutputFrameTable
+from .cli_tools import _time
 
 
 # Create converter with custom hooks
@@ -39,9 +40,11 @@ def load_from_file(filepath: str | Path) -> OutputRecord:
         json.JSONDecodeError: If the file contains invalid JSON
         cattrs.StructureError: If the JSON structure doesn't match expected format
     """
-    with open(filepath) as f:
-        data = json.load(f)
-    return _converter.structure(data, OutputRecord)
+    with _time("load json"):
+        with open(filepath) as f:
+            data = json.load(f)
+    with _time("create output record"):
+        return _converter.structure(data, OutputRecord)
 
 
 def load_from_dict(data: dict) -> OutputRecord:
