@@ -113,7 +113,7 @@ size_t mp_extract_events(size_t           max_events,
                 _mp_frame_information info;
                 __builtin_memcpy(&info, frame_start_ptr + i, sizeof(info));
 
-                bool check_good = (info.tag ^ info.call_count) == info.checksum;
+                bool check_good = mp::check_frame(frame_start_ptr + i);
                 if (check_good) {
                     if (event_i == max_events) return event_i;
 
@@ -228,7 +228,7 @@ void mp_unwind_show_trace() {
                 _mp_frame_information info;
                 __builtin_memcpy(&info, frame_start_ptr + i, sizeof(info));
 
-                bool check_good = (info.tag ^ info.call_count) == info.checksum;
+                bool check_good = mp::check_frame(frame_start_ptr + i);
                 auto type_data  = *info.type_data;
                 if (check_good) {
                     printf("└── " s_frame_info MP_COLOR_GRAY
