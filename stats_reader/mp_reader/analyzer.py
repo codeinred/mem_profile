@@ -12,6 +12,7 @@ from .color import *
 from itertools import starmap
 from collections import defaultdict
 import typer
+from dataclasses import dataclass, field
 
 
 def _loc_lines(loc: Loc) -> list[str | Styled]:
@@ -150,9 +151,12 @@ def print_objects(record: OutputRecord) -> None:
 
 def _print_alloc_stat(
     tag: str,
+    count: int,
     total_bytes: int,
+    count_tag: str = 'objects',
+    count_tag_singular: str = 'object',
     max_tag_len: int | None = None,
-    mb_style: str = Grey,
+    count_style: str = Grey,
     byte_style: str = BB_G,
     tag_style: str = BB_C,
 ):
@@ -161,11 +165,20 @@ def _print_alloc_stat(
             tag = tag[:max_tag_len]
             tag += "..."
 
-    size_mb = f"{total_bytes / (1 << 20):>8.2f} MB"
+    if count == 1:
+        count_tag = count_tag_singular
     print(
-        f"{st(mb_style, size_mb)} {st(byte_style, f'{total_bytes:>12,} bytes')} {st(tag_style, tag)}"
+        f"{st(count_style, f'{count:>8,} {count_tag:8}')} {st(byte_style, f'{total_bytes:>12,} bytes')}  {st(tag_style, tag)}"
     )
 
+
+@dataclass
+class _counts:
+    obj_ids: set[int] = field(default_factory=set)
+    byte_count: int = 0
+
+    def num_objects(self) -> int:
+        return len(self.obj_ids)
 
 def stats(
     input_file: Annotated[Path, typer.Argument(help="Path to malloc_stats.json file")],
@@ -175,6 +188,12 @@ def stats(
     max_typename_len: Annotated[
         int | None, typer.Option(help="Maximum length for type names")
     ] = None,
+    min_bytes: Annotated[
+        int | None, typer.Option(help="Only show entries that take at least this many bytes")
+    ] = None,
+    exclude_self: Annotated[
+        bool, typer.Option(help='Typically the size of an object is given by (dynamic allocations) + (sizeof(object) * num_objects). If --exclude-self is passed, only dynamic allocations are counted.')
+    ] = False,
 ) -> None:
     """
     Print allocation statistics by type, sorted by total bytes allocated.
@@ -185,9 +204,12 @@ def stats(
     from .loader import load_from_file
 
     record = load_from_file(input_file)
+
     # Dictionary to track total bytes allocated by type_data index
-    type_allocations: dict[int, int] = defaultdict(int)
+    counts: dict[int, _counts] = defaultdict(_counts)
+
     untyped_allocations = 0
+    untyped_allocations_count = 0
 
     # Process all FREE events
     for event in record.event_table:
@@ -198,18 +220,39 @@ def stats(
         if object_info is not None:
             # Process typed allocations from object info
             # Each type gets attributed the full event.alloc_size
-            for type_data_idx in object_info.type_data:
-                type_allocations[type_data_idx] += event.alloc_size
+
+            for type_data_idx, object_id in zip(object_info.type_data, object_info.object_id):
+                entry= counts[type_data_idx]
+                entry.byte_count += event.alloc_size
+                entry.obj_ids.add(object_id)
         else:
             # Untyped allocation
+            untyped_allocations_count += 1
             untyped_allocations += event.alloc_size
 
+    if not exclude_self:
+        for k, e in counts.items():
+            e.byte_count += record.get_type_size(k) * e.num_objects()
+
+    total_object_count = sum(
+        len(e.obj_ids) for e in counts.values()
+    )
+
     # Convert to (type_name, total_bytes) and sort by allocation size (descending)
-    type_items = [
-        (record.get_type_name(idx), total_bytes)
-        for idx, total_bytes in type_allocations.items()
-    ]
+    if min_bytes is None:
+        type_items = [
+            (record.get_type_name(idx), e.byte_count, e.num_objects())
+            for idx, e in counts.items()
+        ]
+    else:
+        type_items = [
+            (record.get_type_name(idx), e.byte_count, e.num_objects())
+            for idx, e in counts.items()
+            if e.byte_count >= min_bytes
+        ]
+
     sorted_types = sorted(type_items, key=lambda x: x[1], reverse=True)
+
 
     # Apply count limit if specified
     if count is not None:
@@ -219,12 +262,18 @@ def stats(
     print(f"{bold_white('Allocation Statistics by Type:')}\n")
 
     # Print typed allocations
-    for type_name, total_bytes in sorted_types:
-        _print_alloc_stat(type_name, total_bytes, max_tag_len=max_typename_len)
+    for type_name, total_bytes, object_count in sorted_types:
+        _print_alloc_stat(type_name, object_count, total_bytes, max_tag_len=max_typename_len)
+
+    if len(type_items) < len(counts):
+        num_filtered = len(counts) - len(type_items)
+        print(grey(f"                                 ..."))
+        print(grey(f"{num_filtered:>19} entries filtered"))
+        print()
 
     # Print untyped allocations if any
     if untyped_allocations > 0:
-        _print_alloc_stat("<untyped>", untyped_allocations, tag_style=BB_Y)
+        _print_alloc_stat("<untyped>", untyped_allocations_count, untyped_allocations, count_tag='allocs', count_tag_singular='alloc', tag_style=BB_Y)
 
     # Print totals - sum of all FREE event alloc_sizes
     total_all_frees = sum(
@@ -232,4 +281,4 @@ def stats(
     )
 
     print()
-    _print_alloc_stat("<total>", total_all_frees, tag_style=BB_W, mb_style=BB_W)
+    _print_alloc_stat("<total>", total_object_count, total_all_frees, tag_style=BB_W)
