@@ -1,5 +1,6 @@
 
 #include <cstdio>
+#include <array>
 extern "C" int puts(char const*);
 
 #include <mp_unwind/mp_unwind.h>
@@ -65,15 +66,17 @@ struct Super : Empty, Foo, Bar {
 struct Test3 {
     ~Test3() {}
 };
+
+[[gnu::noinline]]
+void do_stuff() {
+    auto myLambda = [s = std::array<my_ns::FooT<my_ns::Super>, 2>(), x = 0] {
+
+    };
+}
 } // namespace my_ns
 
-#include <array>
 int main() {
-    {
-        auto myLambda = [s = std::array<my_ns::FooT<my_ns::Super>, 2>(), x = 0] {
+    my_ns::do_stuff();
 
-        };
-    }
-
-    printf("counter = %llu", (unsigned long long)::mp::_mp_event_counter);
+    printf("counter = %llu\n", (unsigned long long)::mp::_mp_event_counter);
 }
