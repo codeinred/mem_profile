@@ -166,13 +166,15 @@ mp_add_library(
     ROOT mp/runtime
     PRIVATE_COMPILE_FEATURES
         cxx_std_23
-    DEPS
+    PRIVATE_DEPS
         mp::mp_unwind
         cpptrace::cpptrace
         glaze::glaze
         ankerl::unordered_dense
 )
 target_compile_features(mp_runtime PRIVATE cxx_std_23)
+# target_compile_options(mp_runtime PRIVATE -fsanitize=address,undefined)
+# target_link_options(mp_runtime    PRIVATE -fsanitize=address,undefined)
 
 if(MEM_PROFILE_SANITIZE_RUNTIME)
     target_compile_options(mp_runtime PRIVATE -fsanitize=address,undefined)
@@ -238,6 +240,7 @@ install(
         mp_unwind_shared
         mp_plugin
         mp_build_with_plugin
+        mp_runtime
     EXPORT  ${PROJECT_NAME}Targets
     FILE_SET HEADERS
 )
