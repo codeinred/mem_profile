@@ -189,10 +189,10 @@ add_library(
 target_compile_options(
     mp_build_with_plugin
     INTERFACE
-    -fplugin=$<TARGET_FILE:mp::mp_plugin>
-    -Xclang=-add-plugin
-    -Xclang=mp_instrument_dtors
-    $<INSTALL_INTERFACE:--include=$<INSTALL_PREFIX>/include/mp_hook_prelude.h>
+    $<$<COMPILE_LANGUAGE:CXX>:-fplugin=$<TARGET_FILE:mp::mp_plugin>>
+    $<$<COMPILE_LANGUAGE:CXX>:-Xclang=-add-plugin>
+    $<$<COMPILE_LANGUAGE:CXX>:-Xclang=mp_instrument_dtors>
+    $<$<COMPILE_LANGUAGE:CXX>:$<INSTALL_INTERFACE:--include=$<INSTALL_PREFIX>/include/mp_hook_prelude.h>>
 )
 
 mp_make_shared(
