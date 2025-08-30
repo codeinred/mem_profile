@@ -5,6 +5,7 @@
 #include <cpptrace/cpptrace.hpp>
 #include <fmt/format.h>
 #include <glaze/glaze.hpp>
+#include <mem_profile/containers.h>
 #include <mem_profile/counters.h>
 #include <mp_error/error.h>
 #include <mp_types/types.h>
@@ -15,7 +16,9 @@ using ankerl::unordered_dense::map;
 using ankerl::unordered_dense::set;
 
 struct string_table {
-    std::vector<std::string>           strtab;
+    sv_store& store;
+
+    std::vector<std::string_view>      strtab;
     map<std::string_view, str_index_t> lookup;
     // Some strings come in as c strings with static lifetime.
     // This provides a cache to look up those entries quickly.
@@ -24,9 +27,19 @@ struct string_table {
 
     size_t size() const noexcept { return strtab.size(); }
 
-    /// Inserts the given entry into the string table. Returns the address
-    /// at which it was inserted.
+    /// Inserts the given entry into the string table, adding it to the store
+    /// if it's a new string. Returns the address at which it was inserted.
     str_index_t insert(std::string_view key) {
+        auto it = lookup.find(key);
+        if (it == lookup.end()) {
+            return insert_static(store.add(key));
+        }
+        return it->second;
+    }
+
+
+    /// Insert a key that will outlive the string_table
+    str_index_t insert_static(std::string_view key) {
         str_index_t index_if_new = size();
 
         auto [it, is_new] = lookup.try_emplace(key, index_if_new);
@@ -51,7 +64,7 @@ struct string_table {
         if (!is_new) return it->second;
 
         // Insert as regular string_view
-        auto result = insert(key);
+        auto result = insert_static(key);
 
         // Ensure that our cstr_lookup knows about the correct index
         it->second = result;
@@ -215,7 +228,7 @@ struct output_record {
     std::vector<output_event> event_table;
 
     /// String table
-    std::vector<std::string> strtab;
+    std::vector<std::string_view> strtab;
 };
 
 /// Sanity check: we expect that the number of non-inline frames should match
@@ -247,5 +260,5 @@ auto collect_type_data(std::vector<event_record> const& events)
 
 /// Given the allocations that have occurred over the lifetime of the program,
 /// produce an `output_record` - a compact serializable representation of that data
-auto make_output_record(alloc_counter const& source) -> output_record;
+auto make_output_record(alloc_counter const& source, sv_store& store) -> output_record;
 } // namespace mp

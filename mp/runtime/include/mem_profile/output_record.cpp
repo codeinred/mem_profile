@@ -1,4 +1,5 @@
-#include "mp_hook_prelude.h"
+#include <mp_hook_prelude.h>
+#include <mem_profile/containers.h>
 #include <mem_profile/output_record.h>
 
 #include <dlfcn.h>
@@ -15,7 +16,7 @@ template <class T> auto compute_lookup(std::vector<T> const& values) -> map<T, s
 }
 
 
-output_record make_output_record(alloc_counter const& source) {
+output_record make_output_record(alloc_counter const& source, sv_store& store) {
     auto const& events = source.events();
 
     auto type_data = collect_type_data(events);
@@ -27,7 +28,7 @@ output_record make_output_record(alloc_counter const& source) {
     auto pc_ids_lookup    = compute_lookup(raw_trace.frames);
     auto type_data_lookup = compute_lookup(type_data);
 
-    string_table strtab;
+    string_table strtab{store};
 
     return output_record{
         output_frame_table(strtab,
