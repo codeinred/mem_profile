@@ -45,7 +45,7 @@ clang_path:
     @echo "clang_cxx={{clang_cxx}}"
 
 config:
-    cmake -B build -G Ninja
+    cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
 build: config
     cmake --build build
