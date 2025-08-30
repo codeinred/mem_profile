@@ -60,6 +60,8 @@ class Styled:
     def __str__(self) -> str:
         return f"{self.term_style}{str(self.content)}{RE}"
 
+def st(style: str, content: typing.Any) -> Styled:
+    return Styled(style, content)
 
 def black(input: typing.Any) -> Styled:
     return Styled(BL, input)
