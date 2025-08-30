@@ -5,10 +5,13 @@ Analysis and processing utilities for memory profiler data.
 import pprint
 from .malloc_stats import OutputRecord, ObjectTree, ObjectEnt, Loc, EventType
 import typing
+from typing import Annotated
+from pathlib import Path
 from .tree import Tree, print_tree
 from .color import *
 from itertools import starmap
 from collections import defaultdict
+import typer
 
 
 def _loc_lines(loc: Loc) -> list[str | Styled]:
@@ -144,32 +147,44 @@ def print_objects(record: OutputRecord) -> None:
     for obj in object_list:
         pprint.pprint(obj, compact=True)
 
+
 def _print_alloc_stat(
-        tag: str,
-        total_bytes: int,
-        max_tag_len: int | None = None,
-        mb_style: str = Grey,
-        byte_style: str = BB_G,
-        tag_style: str = BB_C):
+    tag: str,
+    total_bytes: int,
+    max_tag_len: int | None = None,
+    mb_style: str = Grey,
+    byte_style: str = BB_G,
+    tag_style: str = BB_C,
+):
     if max_tag_len is not None:
         if len(tag) > max_tag_len:
             tag = tag[:max_tag_len]
-            tag += '...'
+            tag += "..."
 
-    size_mb = f'{total_bytes / (1 << 20):>8.2f} MB'
-    print(f"{st(mb_style, size_mb)} {st(byte_style, f'{total_bytes:>12,} bytes')} {st(tag_style, tag)}")
+    size_mb = f"{total_bytes / (1 << 20):>8.2f} MB"
+    print(
+        f"{st(mb_style, size_mb)} {st(byte_style, f'{total_bytes:>12,} bytes')} {st(tag_style, tag)}"
+    )
 
-def print_allocation_stats(
-        record: OutputRecord,
-        count: int | None = None,
-        max_typename_len: int | None = 60) -> None:
+
+def stats(
+    input_file: Annotated[Path, typer.Argument(help="Path to malloc_stats.json file")],
+    count: Annotated[
+        int | None, typer.Option(help="Limit output to top N entries")
+    ] = None,
+    max_typename_len: Annotated[
+        int | None, typer.Option(help="Maximum length for type names")
+    ] = None,
+) -> None:
     """
     Print allocation statistics by type, sorted by total bytes allocated.
 
-    Args:
-        record: The memory profiler data to analyze
-        count: Optional limit for number of entries to display
+    Analyzes all FREE events in the memory profiler data and shows which types
+    are responsible for the most memory allocations.
     """
+    from .loader import load_from_file
+
+    record = load_from_file(input_file)
     # Dictionary to track total bytes allocated by type_data index
     type_allocations: dict[int, int] = defaultdict(int)
     untyped_allocations = 0
@@ -190,7 +205,10 @@ def print_allocation_stats(
             untyped_allocations += event.alloc_size
 
     # Convert to (type_name, total_bytes) and sort by allocation size (descending)
-    type_items = [(record.get_type_name(idx), total_bytes) for idx, total_bytes in type_allocations.items()]
+    type_items = [
+        (record.get_type_name(idx), total_bytes)
+        for idx, total_bytes in type_allocations.items()
+    ]
     sorted_types = sorted(type_items, key=lambda x: x[1], reverse=True)
 
     # Apply count limit if specified
@@ -206,10 +224,12 @@ def print_allocation_stats(
 
     # Print untyped allocations if any
     if untyped_allocations > 0:
-        _print_alloc_stat('<untyped>', untyped_allocations, tag_style=BB_Y)
+        _print_alloc_stat("<untyped>", untyped_allocations, tag_style=BB_Y)
 
     # Print totals - sum of all FREE event alloc_sizes
-    total_all_frees = sum(event.alloc_size for event in record.event_table if event.type == EventType.FREE)
+    total_all_frees = sum(
+        event.alloc_size for event in record.event_table if event.type == EventType.FREE
+    )
 
     print()
-    _print_alloc_stat('<total>', total_all_frees, tag_style=BB_W, mb_style=BB_W)
+    _print_alloc_stat("<total>", total_all_frees, tag_style=BB_W, mb_style=BB_W)
