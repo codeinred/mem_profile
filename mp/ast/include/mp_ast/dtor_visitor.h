@@ -129,20 +129,21 @@ struct dtor_visitor : public RecursiveASTVisitor<dtor_visitor>, ast_tools {
         // Mark the destructor as 'noinline', to ensure it isn't inlined
         dtor->addAttr(NoInlineAttr::Create(ctx, SourceRange(dtor_start)));
 
+        if (0) {
+            dtor->dumpColor();
+            ctx.getFullLoc(dtor_start).dump();
+            ctx.getFullLoc(body_start).dump();
+            auto& outs = llvm::outs();
+            outs << "Rewrote CXX Destructor '";
+            auto&& sm  = ctx.getSourceManager();
+            auto   pol = PrintingPolicy(LangOptions());
+            dtor->getNameForDiagnostic(outs, pol, true);
 
-        dtor->dumpColor();
-        ctx.getFullLoc(dtor_start).dump();
-        ctx.getFullLoc(body_start).dump();
-        auto& outs = llvm::outs();
-        outs << "Rewrote CXX Destructor '";
-        auto&& sm  = ctx.getSourceManager();
-        auto   pol = PrintingPolicy(LangOptions());
-        dtor->getNameForDiagnostic(outs, pol, true);
-
-        outs << " @ ";
-        dtor->getLocation().print(outs, sm);
-        outs << '\n';
-        dtor->print(outs, 0, false);
+            outs << " @ ";
+            dtor->getLocation().print(outs, sm);
+            outs << '\n';
+            dtor->print(outs, 0, false);
+        }
     }
 
     void rewrite_dtors() {

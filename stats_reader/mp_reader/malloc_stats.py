@@ -6,14 +6,25 @@ Replicates the C++ structures defined in mem_profile/output_record.h
 
 from dataclasses import dataclass
 from enum import Enum
+import typing
 
 # Type aliases matching C++ types
 addr_t = int  # uintptr_t
 str_index_t = int  # size_t
+
 u64 = int
+
 u32 = int
+
 u8 = int
+
 size_t = int
+
+type_index_t = int
+"""Index into type data table"""
+
+offset_t = int
+"""Pointer offset - difference of subtracting two pointers"""
 
 
 class EventType(Enum):
@@ -81,8 +92,33 @@ class OutputObjectInfo:
     type: list[str_index_t]
     """Type name indices into string table"""
 
-    type_data: list[size_t]
+    type_data: list[type_index_t]
     """Index into type data table for each entry"""
+
+    def depth(self) -> int:
+        return len(self.type_data)
+
+    def reverse(self) -> 'OutputObjectInfo':
+        """Return a new OutputObjectInfo which reverses the order of all entries
+        in the OutputObjectInfo.
+
+        This puts the 'largest' or 'most senior' object first."""
+        return OutputObjectInfo(
+            list(reversed(self.trace_index)),
+            list(reversed(self.object_id)),
+            list(reversed(self.addr)),
+            list(reversed(self.size)),
+            list(reversed(self.type)),
+            list(reversed(self.type_data)),
+        )
+
+    def clean(self, selected: list[int]):
+        self.trace_index = [self.trace_index[i] for i in selected]
+        self.object_id = [self.object_id[i] for i in selected]
+        self.addr = [self.addr[i] for i in selected]
+        self.size = [self.size[i] for i in selected]
+        self.type = [self.type[i] for i in selected]
+        self.type_data = [self.type_data[i] for i in selected]
 
 
 @dataclass
@@ -333,52 +369,52 @@ class OutputRecord:
         )
 
 
-    def get_type_name(self, type_i: int) -> str:
+    def get_type_name(self, type_i: type_index_t) -> str:
         """Get the name of the given type, by the type index"""
         return self.strtab[self.type_data_table.type[type_i]]
 
-    def get_type_size(self, type_i: int) -> size_t:
+    def get_type_size(self, type_i: type_index_t) -> size_t:
         """Get the size of the given type, by the type index"""
         return self.type_data_table.size[type_i]
 
-    def get_field_slice(self, type_i: int) -> slice:
+    def get_field_slice(self, type_i: type_index_t) -> slice:
         """Get the slice into the field table for the given type, by the type index"""
         return self.type_data_table.field_slice(type_i)
 
-    def get_base_slice(self, type_i: int) -> slice:
+    def get_base_slice(self, type_i: type_index_t) -> slice:
         """Get the slice into the base table for the given type, by the type index"""
         return self.type_data_table.base_slice(type_i)
 
-    def get_field_names(self, type_i: int) -> list[str]:
+    def get_field_names(self, type_i: type_index_t) -> list[str]:
         """Get the list of fields for a given type, by the type index"""
         return self.strs(self.type_data_table.field_names[self.get_field_slice(type_i)])
 
-    def get_field_types(self, type_i: int) -> list[str]:
+    def get_field_types(self, type_i: type_index_t) -> list[str]:
         """Get the list of field types for a given type, by the type index"""
         return self.strs(self.type_data_table.field_types[self.get_field_slice(type_i)])
 
-    def get_field_sizes(self, type_i: int) -> list[size_t]:
+    def get_field_sizes(self, type_i: type_index_t) -> list[size_t]:
         """Get the list of field sizes for a given type, by the type index"""
         return self.type_data_table.field_sizes[self.get_field_slice(type_i)]
 
-    def get_field_offsets(self, type_i: int) -> list[size_t]:
+    def get_field_offsets(self, type_i: type_index_t) -> list[size_t]:
         """Get the list of field offsets for a given type, by the type index"""
         return self.type_data_table.field_offsets[self.get_field_slice(type_i)]
 
-    def get_base_types(self, type_i: int) -> list[str]:
+    def get_base_types(self, type_i: type_index_t) -> list[str]:
         """Get the list of base class types for a given type, by the type index"""
         return self.strs(self.type_data_table.base_types[self.get_base_slice(type_i)])
 
-    def get_base_sizes(self, type_i: int) -> list[size_t]:
+    def get_base_sizes(self, type_i: type_index_t) -> list[size_t]:
         """Get the list of base class sizes for a given type, by the type index"""
         return self.type_data_table.base_sizes[self.get_base_slice(type_i)]
 
-    def get_base_offsets(self, type_i: int) -> list[size_t]:
+    def get_base_offsets(self, type_i: type_index_t) -> list[size_t]:
         """Get the list of base class offsets for a given type, by the type index"""
         return self.type_data_table.base_offsets[self.get_base_slice(type_i)]
 
 
-    def get_type_data_at(self, i: int) -> TypeData:
+    def get_type_data_at(self, i: type_index_t) -> TypeData:
         return TypeData(
             size=self.get_type_size(i),
             name=self.get_type_name(i),
@@ -396,6 +432,20 @@ class OutputRecord:
             map(self.get_type_data_at, range(self.type_data_table.num_entries()))
         )
 
+    def clean(self):
+        for e in self.event_table:
+            if e.object_info is None:
+                continue
+            if e.type != EventType.FREE:
+                continue
+            object_info: OutputObjectInfo = e.object_info
+            trace_pc_ids = [e.pc_id[trace_index] for trace_index in object_info.trace_index]
+
+            good = [
+                i for i in range(len(trace_pc_ids)) if trace_pc_ids
+                if '::~' in self.strtab[self.frame_table.func[self.frame_table.offsets[trace_pc_ids[i] + 1] - 1]]
+            ]
+            e.object_info.clean(good)
 
 
 @dataclass

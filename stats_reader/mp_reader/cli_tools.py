@@ -13,8 +13,8 @@ class Timer:
 
     description: str
     threshold_seconds: float = 1.0
-    start_time: float = None
-    end_time: float = None
+    start_time: float = 0.0
+    end_time: float = 0.0
 
     def __enter__(self):
         self.start_time = time.time()

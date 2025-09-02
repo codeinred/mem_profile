@@ -3,7 +3,18 @@ Analysis and processing utilities for memory profiler data.
 """
 
 import pprint
-from .malloc_stats import OutputRecord, ObjectTree, ObjectEnt, Loc, EventType
+from .malloc_stats import (
+    OutputRecord,
+    ObjectTree,
+    ObjectEnt,
+    OutputEvent,
+    OutputObjectInfo,
+    Loc,
+    EventType,
+    size_t,
+    offset_t,
+    type_index_t,
+)
 import typing
 from typing import Annotated
 from pathlib import Path
@@ -153,8 +164,8 @@ def _print_alloc_stat(
     tag: str,
     count: int,
     total_bytes: int,
-    count_tag: str = 'objects',
-    count_tag_singular: str = 'object',
+    count_tag: str = "objects",
+    count_tag_singular: str = "object",
     max_tag_len: int | None = None,
     count_style: str = Grey,
     byte_style: str = BB_G,
@@ -172,6 +183,206 @@ def _print_alloc_stat(
     )
 
 
+@dataclass(slots=True)
+class AllocCount:
+    alloc_count: int = 0
+    alloc_bytes: int = 0
+
+    def add(self, alloc_bytes: int):
+        self.alloc_count += 1
+        self.alloc_bytes += alloc_bytes
+
+
+@dataclass(slots=True, order=True)
+class Base:
+    offset: offset_t
+    size: size_t
+    type_name: str
+
+
+@dataclass(slots=True, order=True)
+class Field:
+    offset: offset_t
+    size: size_t
+    type_name: str
+    field_name: str | None
+
+
+@dataclass(slots=True, order=True)
+class ChildAllocStats:
+    offset: offset_t
+    size: size_t
+    type_name: str
+    tid: type_index_t
+    alloc_count: AllocCount
+
+
+def get_stats_for_type(
+    tid: int, record: OutputRecord, select_events: typing.Iterable[int] | None = None
+):
+    if select_events is None:
+        select_events = range(len(record.event_table))
+
+    # events: list[OutputEvent] = [record.event_table[e] for e in select_events]
+
+    # Get all free events that contain the given type
+    events: list[OutputEvent] = [
+        e
+        for e in map(record.event_table.__getitem__, select_events)
+        if (
+            e.type == EventType.FREE
+            and e.object_info is not None
+            and tid in e.object_info.type_data
+        )
+    ]
+
+    type_size = record.get_type_size(tid)
+
+    object_ids: set[int] = set()
+
+    alloc_count = len(events)
+    alloc_bytes = sum(e.alloc_size for e in events)
+
+    direct_alloc_count = 0
+    direct_alloc_bytes = 0
+
+    child_data: dict[tuple[offset_t, type_index_t], AllocCount] = defaultdict(
+        AllocCount
+    )
+    indirect_child_data: dict[type_index_t, AllocCount] = defaultdict(AllocCount)
+
+    for e in events:
+        # if 't_lookup' in record.get_type_name(tid):
+        #     print_event_trace(record, e.id, show_bin_addr=True, skip_inline=False)
+        object_info = e.object_info.reverse()
+
+        # Find the index of the type within the object.
+        # We can assume that `tid` must be in the type_data, because that was
+        # one of the conditions when we created the list of events up above.
+        i = object_info.type_data.index(tid)
+
+        object_ids.add(object_info.object_id[i])
+
+        is_leaf = object_info.depth() == i + 1
+
+        # If it's a leaf, there are no child objects
+        if is_leaf:
+            direct_alloc_count += 1
+            direct_alloc_bytes += e.alloc_size
+            continue
+
+        this_ptr = object_info.addr[i]
+
+        child_ptr = object_info.addr[i + 1]
+        child_tid = object_info.type_data[i + 1]
+
+        # Offset of child within parent
+        offset = child_ptr - this_ptr
+
+        is_member_or_base: bool = offset in range(type_size)
+
+        if is_member_or_base:
+            child_data[(offset, child_tid)].add(e.alloc_size)
+        else:
+            indirect_child_data[child_tid].add(e.alloc_size)
+
+    type_data = record.get_type_data_at(tid)
+
+    results: list[Field | Base | ChildAllocStats] = []
+
+    for offset, size, type_name in zip(
+        type_data.base_offsets, type_data.base_sizes, type_data.base_types
+    ):
+        results.append(
+            Base(
+                offset,
+                size,
+                type_name,
+            )
+        )
+
+    for offset, size, type_name, field_name in zip(
+        type_data.field_offsets,
+        type_data.field_sizes,
+        type_data.field_types,
+        type_data.field_names,
+    ):
+        results.append(
+            Field(
+                offset,
+                size,
+                type_name,
+                field_name,
+            )
+        )
+
+    for (offset, tid), allocs in child_data.items():
+        results.append(
+            ChildAllocStats(
+                offset,
+                record.get_type_size(tid),
+                record.get_type_name(tid),
+                tid,
+                allocs,
+            )
+        )
+
+    def _key(x: Field | Base | ChildAllocStats):
+        match x:
+            case Base():
+                return (x.offset, x.size, 0)
+            case Field():
+                return (x.offset, x.size, 1)
+            case ChildAllocStats():
+                return (x.offset, x.size, 2)
+
+    results.sort(key=_key)
+
+    print(f"{bb_yellow('struct')} {bb_cyan(type_data.name)}:")
+    for e in results:
+        match e:
+            case Base():
+                start, end = e.offset, e.offset + e.size
+                _range = f"bytes {start:<4}..{end:<4} in object"
+                tag = "(base)"
+                print(
+                    f"  {bb_cyan(e.type_name)} (base)"
+                )
+            case Field():
+                start, end = e.offset, e.offset + e.size
+                _range = f"bytes {start:<4}..{end:<4} in object"
+                tag = e.field_name
+                print(
+                    f"  {bb_cyan(e.type_name):<24} {bb_green(tag)};"
+                )
+            case ChildAllocStats():
+                alloc_bytes = f"{e.alloc_count.alloc_bytes:,}" + " bytes"
+                alloc_count = f"{e.alloc_count.alloc_count:,}" + " allocs"
+                print(
+                    f"  └── {bb_green(alloc_bytes)} across {bb_blue(alloc_count)} : {st(Grey, e.type_name)}\n"
+                )
+    if direct_alloc_count > 0:
+        print(f"  indirect allocs:")
+        alloc_bytes = f"{direct_alloc_bytes:,}" + " bytes"
+        alloc_count = f"{direct_alloc_count:,}" + " allocs"
+        print(
+            f"    {bb_green(alloc_bytes)} across {bb_blue(alloc_count)}"
+        )
+    if len(indirect_child_data) > 0:
+        print(f"  indirect children: n={len(indirect_child_data)}")
+        items: list[tuple[type_index_t, AllocCount]] = sorted(
+            list(indirect_child_data.items()),
+            key = lambda ent: record.get_type_name(ent[0])
+        )
+        for (tid, alloc_count) in items:
+            alloc_bytes = f"{alloc_count.alloc_bytes:,}" + " bytes"
+            alloc_count = f"{alloc_count.alloc_count:,}" + " allocs"
+            print(
+                f"    {bb_green(alloc_bytes)} across {bb_blue(alloc_count)} : {st(Grey, record.get_type_name(tid))}"
+            )
+
+
+
 @dataclass
 class _counts:
     obj_ids: set[int] = field(default_factory=set)
@@ -179,6 +390,7 @@ class _counts:
 
     def num_objects(self) -> int:
         return len(self.obj_ids)
+
 
 def stats(
     input_file: Annotated[Path, typer.Argument(help="Path to malloc_stats.json file")],
@@ -189,11 +401,18 @@ def stats(
         int | None, typer.Option(help="Maximum length for type names")
     ] = None,
     min_bytes: Annotated[
-        int | None, typer.Option(help="Only show entries that take at least this many bytes")
+        int | None,
+        typer.Option(help="Only show entries that take at least this many bytes"),
     ] = None,
     exclude_self: Annotated[
-        bool, typer.Option(help='Typically the size of an object is given by (dynamic allocations) + (sizeof(object) * num_objects). If --exclude-self is passed, only dynamic allocations are counted.')
+        bool,
+        typer.Option(
+            help="Typically the size of an object is given by (dynamic allocations) + (sizeof(object) * num_objects). If --exclude-self is passed, only dynamic allocations are counted."
+        ),
     ] = False,
+    top_n_layouts: Annotated[
+        int, typer.Option(help="Print the layout stats for the top n largest types")
+    ] = 0,
 ) -> None:
     """
     Print allocation statistics by type, sorted by total bytes allocated.
@@ -203,7 +422,9 @@ def stats(
     """
     from .loader import load_from_file
 
-    record = load_from_file(input_file)
+    record: OutputRecord = load_from_file(input_file)
+
+    record.clean()
 
     # Dictionary to track total bytes allocated by type_data index
     counts: dict[int, _counts] = defaultdict(_counts)
@@ -221,10 +442,14 @@ def stats(
             # Process typed allocations from object info
             # Each type gets attributed the full event.alloc_size
 
-            for type_data_idx, object_id in zip(object_info.type_data, object_info.object_id):
-                entry= counts[type_data_idx]
-                entry.byte_count += event.alloc_size
-                entry.obj_ids.add(object_id)
+            for tid, object_id in zip(object_info.type_data, object_info.object_id):
+                counts[tid].obj_ids.add(object_id)
+
+            # Constructing a set from the types in the trace ensures that
+            # we don't double-count allocations for recursive data structures
+            for tid in set(object_info.type_data):
+                counts[tid].byte_count += event.alloc_size
+
         else:
             # Untyped allocation
             untyped_allocations_count += 1
@@ -234,25 +459,22 @@ def stats(
         for k, e in counts.items():
             e.byte_count += record.get_type_size(k) * e.num_objects()
 
-    total_object_count = sum(
-        len(e.obj_ids) for e in counts.values()
-    )
+    total_object_count = sum(len(e.obj_ids) for e in counts.values())
 
     # Convert to (type_name, total_bytes) and sort by allocation size (descending)
     if min_bytes is None:
         type_items = [
-            (record.get_type_name(idx), e.byte_count, e.num_objects())
+            (record.get_type_name(idx), e.byte_count, e.num_objects(), idx)
             for idx, e in counts.items()
         ]
     else:
         type_items = [
-            (record.get_type_name(idx), e.byte_count, e.num_objects())
+            (record.get_type_name(idx), e.byte_count, e.num_objects(), idx)
             for idx, e in counts.items()
             if e.byte_count >= min_bytes
         ]
 
     sorted_types = sorted(type_items, key=lambda x: x[1], reverse=True)
-
 
     # Apply count limit if specified
     if count is not None:
@@ -262,8 +484,10 @@ def stats(
     print(f"{bold_white('Allocation Statistics by Type:')}\n")
 
     # Print typed allocations
-    for type_name, total_bytes, object_count in sorted_types:
-        _print_alloc_stat(type_name, object_count, total_bytes, max_tag_len=max_typename_len)
+    for type_name, total_bytes, object_count, _ in sorted_types:
+        _print_alloc_stat(
+            type_name, object_count, total_bytes, max_tag_len=max_typename_len
+        )
 
     if len(type_items) < len(counts):
         num_filtered = len(counts) - len(type_items)
@@ -273,7 +497,14 @@ def stats(
 
     # Print untyped allocations if any
     if untyped_allocations > 0:
-        _print_alloc_stat("<untyped>", untyped_allocations_count, untyped_allocations, count_tag='allocs', count_tag_singular='alloc', tag_style=BB_Y)
+        _print_alloc_stat(
+            "<untyped>",
+            untyped_allocations_count,
+            untyped_allocations,
+            count_tag="allocs",
+            count_tag_singular="alloc",
+            tag_style=BB_Y,
+        )
 
     # Print totals - sum of all FREE event alloc_sizes
     total_all_frees = sum(
@@ -282,3 +513,8 @@ def stats(
 
     print()
     _print_alloc_stat("<total>", total_object_count, total_all_frees, tag_style=BB_W)
+
+    if top_n_layouts > 0:
+        entries = sorted_types[:top_n_layouts]
+        for _, _, _, tid in entries:
+            get_stats_for_type(tid, record)
