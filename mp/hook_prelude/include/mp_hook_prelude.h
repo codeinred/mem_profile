@@ -1,6 +1,8 @@
 #ifndef MP_HOOK_PRELUDE_H
 #define MP_HOOK_PRELUDE_H
 
+#include <atomic>
+
 struct _mp_type_data {
     using size_t = __SIZE_TYPE__;
 
@@ -23,7 +25,7 @@ struct _mp_type_data {
 namespace mp {
 using size_t       = __SIZE_TYPE__;
 using ull_t        = unsigned long long;
-using atomic_ull_t = _Atomic(unsigned long long);
+using atomic_ull_t = ::std::atomic_ullong;
 
 constexpr ull_t     _mp_frame_tag     = 0xeeb36e726e3ffec1ull;
 inline atomic_ull_t _mp_event_counter = 0;
