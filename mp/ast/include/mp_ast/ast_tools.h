@@ -338,6 +338,39 @@ struct ast_tools {
         return IntegerLiteral::Create(ctx, llvm::APInt(bit_width, literal_value), type, loc);
     }
 
+    auto bool_literal(Loc loc, bool value) -> CXXBoolLiteralExpr* {
+        return CXXBoolLiteralExpr::Create(ctx, value, ctx.BoolTy, loc);
+    }
+
+    auto decl_constexpr_static_bool_array(Loc                      loc,
+                                          StringRef                name,
+                                          std::vector<bool> const& values,
+                                          DeclContext*             decl_context) -> VarDecl* {
+
+        auto   size_type   = ctx.getSizeType();
+        size_t size_t_bits = ctx.getTypeSize(size_type);
+        auto   type        = ctx.getConstantArrayType(ctx.BoolTy,
+                                             llvm::APInt(size_t_bits, values.size()),
+                                             nullptr,
+                                             ArraySizeModifier::Normal,
+                                             0);
+        auto   result      = declare_static_var(loc, decl_context, name, type);
+        result->setConstexpr(true);
+
+        auto value_exprs = alloc_mut_array_ref<Expr*>(values.size());
+
+        for (size_t i = 0; i < values.size(); i++) {
+            value_exprs[i] = bool_literal(loc, values[i]);
+        }
+
+        auto init_expr = new (ctx) InitListExpr(ctx, loc, value_exprs, loc);
+        init_expr->setType(type);
+        result->setInit(init_expr);
+
+        return result;
+    }
+
+
     auto decl_constexpr_static_size_array(Loc                        loc,
                                           StringRef                  name,
                                           std::vector<size_t> const& values,
@@ -394,6 +427,18 @@ struct ast_tools {
         return result;
     }
 
+    /// Returns true if the type is trivially destructible
+    bool isOwning(QualType const& type) const {
+        if (!type->isRecordType()) return false;
+        if (type->isReferenceType()) return false;
+        if (type->isPointerType()) return false;
+        auto* recordDecl = type->getAsCXXRecordDecl();
+        if (recordDecl == nullptr) {
+            return false;
+        }
+        return !recordDecl->hasTrivialDestructor();
+    }
+
     auto invoke_hook(Loc            loc,
                      QualType       type,
                      FunctionDecl*  hook_decl,
@@ -412,6 +457,7 @@ struct ast_tools {
         std::vector<std::string> field_types(field_count);
         std::vector<size_t>      field_offsets(field_count);
         std::vector<size_t>      field_sizes(field_count);
+        std::vector<bool>        field_owning(field_count);
 
 
         size_t char_bits = ctx.getCharWidth();
@@ -424,6 +470,7 @@ struct ast_tools {
                 field_types[i]   = field_type.getAsString(pol);
                 field_offsets[i] = layout.getFieldOffset(field->getFieldIndex()) / char_bits;
                 field_sizes[i]   = ctx.getTypeSizeInChars(field_type).getQuantity();
+                field_owning[i]  = isOwning(field_type);
                 i++;
             }
         }
@@ -433,6 +480,7 @@ struct ast_tools {
         std::vector<std::string> base_names(base_count);
         std::vector<size_t>      base_offsets(base_count);
         std::vector<size_t>      base_sizes(base_count);
+        std::vector<bool>        base_owning(base_count);
 
         {
             size_t i = 0;
@@ -441,7 +489,8 @@ struct ast_tools {
                 base_names[i]  = base_type.getAsString(pol);
                 base_offsets[i]
                     = layout.getBaseClassOffset(base.getType()->getAsCXXRecordDecl()).getQuantity();
-                base_sizes[i] = ctx.getTypeSizeInChars(base_type).getQuantity();
+                base_sizes[i]  = ctx.getTypeSizeInChars(base_type).getQuantity();
+                base_owning[i] = isOwning(base_type);
                 ++i;
             }
         }
@@ -457,6 +506,8 @@ struct ast_tools {
                                                                   method_ctx);
         auto field_sizes_var
             = decl_constexpr_static_size_array(loc, "__MP_FIELD_SIZES", field_sizes, method_ctx);
+        auto field_owning_var
+            = decl_constexpr_static_bool_array(loc, "__MP_FIELD_OWNING", field_owning, method_ctx);
 
         auto base_types_var
             = decl_constexpr_static_cstring_array(loc, "__MP_BASE_TYPES", base_names, method_ctx);
@@ -464,6 +515,8 @@ struct ast_tools {
             = decl_constexpr_static_size_array(loc, "__MP_BASE_SIZES", base_sizes, method_ctx);
         auto base_offsets_var
             = decl_constexpr_static_size_array(loc, "__MP_BASE_OFFSETS", base_offsets, method_ctx);
+        auto base_owning_var
+            = decl_constexpr_static_bool_array(loc, "__MP_BASE_OWNING", base_owning, method_ctx);
 
         auto mp_type_data_decl = find_record_decl("_mp_type_data");
         if (!mp_type_data_decl->isCompleteDefinition()) {
@@ -488,9 +541,11 @@ struct ast_tools {
                                          decay_to_ptr(const_decl_ref(loc, field_types_var)),
                                          decay_to_ptr(const_decl_ref(loc, field_sizes_var)),
                                          decay_to_ptr(const_decl_ref(loc, field_offsets_var)),
+                                         decay_to_ptr(const_decl_ref(loc, field_owning_var)),
                                          decay_to_ptr(const_decl_ref(loc, base_types_var)),
                                          decay_to_ptr(const_decl_ref(loc, base_sizes_var)),
                                          decay_to_ptr(const_decl_ref(loc, base_offsets_var)),
+                                         decay_to_ptr(const_decl_ref(loc, base_owning_var)),
                                      }),
                                      loc);
         init_expr->setType(ctx.getConstType(mp_type_data_qual_type));
@@ -507,14 +562,16 @@ struct ast_tools {
         auto call_expr
             = CallExpr::Create(ctx, func, args, ctx.VoidTy, VK_PRValue, loc, FPOptionsOverride());
 
-        return std::array<Stmt*, 9>{
+        return std::array<Stmt*, 11>{
             create_decl_stmt(loc, field_names_var),
             create_decl_stmt(loc, field_types_var),
             create_decl_stmt(loc, field_sizes_var),
             create_decl_stmt(loc, field_offsets_var),
+            create_decl_stmt(loc, field_owning_var),
             create_decl_stmt(loc, base_types_var),
             create_decl_stmt(loc, base_sizes_var),
             create_decl_stmt(loc, base_offsets_var),
+            create_decl_stmt(loc, base_owning_var),
             create_decl_stmt(loc, type_data_var),
             call_expr,
         };

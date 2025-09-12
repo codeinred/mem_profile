@@ -14,10 +14,12 @@ struct _mp_type_data {
     char const* const* field_types;
     size_t const*      field_sizes;
     size_t const*      field_offsets;
+    bool const*        field_owning;
 
     char const* const* base_types;
     size_t const*      base_sizes;
     size_t const*      base_offsets;
+    bool const*        base_owning;
 };
 
 namespace mp {
@@ -63,10 +65,7 @@ inline void save_state(void* this_ptr, void* alloca_block, _mp_type_data const& 
         count,
         this_ptr,
         &type_data,
-        ::mp::_mix4(mp::_mp_frame_tag,
-                    count,
-                    mp::ull_t(this_ptr),
-                    mp::ull_t(&type_data)),
+        ::mp::_mix4(mp::_mp_frame_tag, count, mp::ull_t(this_ptr), mp::ull_t(&type_data)),
     };
     __builtin_memcpy(alloca_block, &result, sizeof(result));
     asm volatile("" : : "r"(alloca_block) : "memory");
