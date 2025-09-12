@@ -11,6 +11,8 @@
 #include <clang/Sema/Sema.h>
 #include <llvm/Support/raw_ostream.h>
 
+#include <mp_core/colors.h>
+
 #include <mp_ast/ast_tools.h>
 #include <mp_error/error.h>
 #include <unordered_set>
@@ -21,6 +23,13 @@ using namespace clang;
 struct dtor_visitor : public RecursiveASTVisitor<dtor_visitor>, ast_tools {
   public:
     std::unordered_set<CXXDestructorDecl*> dtors;
+
+    /// If true, print the names of dtors as they're rewritten
+    bool print_dtor_name = false;
+    /// If true, print the body of any dtors that are rewritten by the program
+    bool print_dtor_body = false;
+    /// If true, print the abstract syntax tree of the destructor
+    bool print_dtor_ast  = false;
 
     dtor_visitor(CompilerInstance& CI) : ast_tools(CI) {}
 
@@ -58,7 +67,7 @@ struct dtor_visitor : public RecursiveASTVisitor<dtor_visitor>, ast_tools {
         auto parent = dtor->getParent();
         if (parent == nullptr) {
             llvm::outs() << "Couldn't get parent for dtor ";
-            dtor->getNameForDiagnostic(llvm::outs(), ctx.getPrintingPolicy(), true);
+            dtor->getNameForDiagnostic(llvm::outs(), pol, true);
             llvm::outs() << '\n';
             return;
         }
@@ -129,20 +138,27 @@ struct dtor_visitor : public RecursiveASTVisitor<dtor_visitor>, ast_tools {
         // Mark the destructor as 'noinline', to ensure it isn't inlined
         dtor->addAttr(NoInlineAttr::Create(ctx, SourceRange(dtor_start)));
 
-        if (0) {
-            dtor->dumpColor();
-            ctx.getFullLoc(dtor_start).dump();
-            ctx.getFullLoc(body_start).dump();
-            auto& outs = llvm::outs();
-            outs << "Rewrote CXX Destructor '";
-            auto&& sm  = ctx.getSourceManager();
-            auto   pol = PrintingPolicy(LangOptions());
-            dtor->getNameForDiagnostic(outs, pol, true);
+        bool print_any = print_dtor_ast || print_dtor_body || print_dtor_name;
 
-            outs << " @ ";
-            dtor->getLocation().print(outs, sm);
-            outs << '\n';
-            dtor->print(outs, 0, false);
+        if (print_any) {
+            auto&  outs = llvm::outs();
+            auto&& sm   = ctx.getSourceManager();
+            if (print_dtor_name) {
+                outs << mp::colors::BW;
+                outs << "Rewrote ";
+                outs << mp::colors::BG;
+                dtor->getNameForDiagnostic(outs, pol, true);
+                outs << mp::colors::Re << " @ " << mp::colors::BC;
+                dtor->getLocation().print(outs, sm);
+                outs << mp::colors::Re << '\n';
+            }
+            if (print_dtor_body) {
+
+                dtor->print(outs, pol, 0, false);
+            }
+            if (print_dtor_ast) {
+                dtor->dumpColor();
+            }
         }
     }
 
