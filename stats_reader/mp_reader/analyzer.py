@@ -339,6 +339,9 @@ def get_stats_for_type(
         else:
             indirect_child_data[child_tid].add(e.alloc_size)
 
+    total_alloc_count = len(events)
+    total_allocated_bytes = sum(e.alloc_size for e in events)
+
     type_data = record.get_type_data_at(tid)
 
     results: list[Field | Base | ChildAllocStats] = []
@@ -390,24 +393,30 @@ def get_stats_for_type(
                 return (x.offset, 2, x.size)
 
     max_field_type_len = 0
+    max_base_type_len = 0
     for e in results:
         match e:
             case Field():
                 max_field_type_len = max(len(e.type_name), max_field_type_len)
+            case Base():
+                max_base_type_len = max(len(e.type_name), max_base_type_len)
             case _:
                 continue
 
-
     results.sort(key=_key)
 
-    print(f"{bb_yellow('struct')} {bb_cyan(type_data.name)}")
-    base_prefix = ': '
+    base_prefix = ": "
     needs_open_bracket = True
     needs_newline = False
     last_offset = 0
     last_child_size = 0
-    last_child_str: str = ''
+    last_child_str: str = ""
     last_print_was_stats = False
+
+    print(f"{Grey}// Totals for {type_data.name}{RE}")
+    print(f"{Grey}// └── {BB_G}{total_allocated_bytes:,} bytes{RE}{Grey} across {BB_C}{total_alloc_count} allocs{RE}")
+    print(f"{bb_yellow('struct')} {bb_cyan(type_data.name)}")
+
     for e in results:
         match e:
             case Base():
@@ -418,38 +427,43 @@ def get_stats_for_type(
                     print()
                 start, end = e.offset, e.offset + e.size
                 _range = f"bytes {start:<4}..{end:<4} in object"
-                tag = "(base)"
-                last_child_str = f"  {base_prefix}{bb_cyan(e.type_name)} (base)"
-                print(last_child_str, end='')
+                last_child_str = f"  {base_prefix}{bb_cyan(e.type_name):<{max_base_type_len}}"
+                print(last_child_str, end="")
                 last_print_was_stats = False
                 needs_newline = True
-                base_prefix = ', '
+                base_prefix = ", "
             case Field():
                 last_offset = e.offset
                 last_child_size = e.size
+                if needs_open_bracket:
+                    if needs_newline:
+                        print(" {")
+                    else:
+                        print("{")
+                    needs_open_bracket = False
+                    needs_newline = False
                 if needs_newline:
                     print()
                     needs_newline = False
-                if needs_open_bracket:
-                    print("{")
-                    needs_open_bracket = False
                 start, end = e.offset, e.offset + e.size
                 _range = f"bytes {start:<4}..{end:<4} in object"
                 tag = e.field_name
                 if tag == "":
-                    tag = "(unnamed)";
-                last_child_str = f"  {bb_cyan(e.type_name):<{max_field_type_len}} {bb_green(tag)};"
-                print(last_child_str, end='')
+                    tag = "(unnamed)"
+                last_child_str = (
+                    f"  {bb_cyan(e.type_name):<{max_field_type_len}} {bb_green(tag)};"
+                )
+                print(last_child_str, end="")
                 last_print_was_stats = False
                 needs_newline = True
             case ChildAllocStats():
                 # Ensure that this stat has the same indent of the previous one
                 if last_print_was_stats:
-                    print(' ' * len_without_color(last_child_str), end='')
-                inner_offset_str = ''
+                    print(" " * len_without_color(last_child_str), end="")
+                inner_offset_str = ""
                 if e.size < last_child_size:
                     # We're inside a c-style array or we were allocated in a buffer...
-                    inner_offset = (e.offset - last_offset)
+                    inner_offset = e.offset - last_offset
                     if inner_offset % e.size == 0:
                         array_index = inner_offset // e.size
                         inner_offset_str = f"[{array_index}] "
@@ -458,7 +472,7 @@ def get_stats_for_type(
                 alloc_bytes = f"{e.alloc_count.alloc_bytes:,}" + " bytes"
                 alloc_count = f"{e.alloc_count.alloc_count:,}" + " allocs"
                 print(
-                    f"  {Grey}// {inner_offset_str}{RE}{bb_green(alloc_bytes)}{Grey} across {RE}{bb_blue(alloc_count)}{Grey} : {e.type_name}"
+                    f" {Grey}// {inner_offset_str}{RE}{bb_green(alloc_bytes)}{Grey} across {RE}{bb_blue(alloc_count)}{Grey} : {e.type_name}{RE}"
                 )
                 last_print_was_stats = True
                 needs_newline = False
@@ -467,25 +481,36 @@ def get_stats_for_type(
     if needs_newline:
         print()
         needs_newline = False
-    print("};")
-    if direct_alloc_count > 0:
-        print(f"  indirect allocs:")
-        alloc_bytes = f"{direct_alloc_bytes:,}" + " bytes"
-        alloc_count = f"{direct_alloc_count:,}" + " allocs"
-        print(f"    {bb_green(alloc_bytes)} across {bb_blue(alloc_count)}")
-    if len(indirect_child_data) > 0:
-        print(f"  indirect children: n={len(indirect_child_data)}")
-        items: list[tuple[type_index_t, AllocCount]] = sorted(
-            list(indirect_child_data.items()),
-            key=lambda ent: record.get_type_name(ent[0]),
-        )
-        for tid, alloc_count in items:
-            alloc_bytes = f"{alloc_count.alloc_bytes:,}" + " bytes"
-            alloc_count = f"{alloc_count.alloc_count:,}" + " allocs"
-            print(
-                f"    {bb_green(alloc_bytes)} across {bb_blue(alloc_count)} : {st(Grey, record.get_type_name(tid))}"
-            )
 
+    has_other_allocs = direct_alloc_count > 0 or len(indirect_child_data) > 0
+
+    if has_other_allocs:
+        print()
+        print(f"  {BB_C}~{type_data.name}();{RE}")
+
+        if direct_alloc_count > 0:
+            alloc_bytes = f"{direct_alloc_bytes:,} bytes"
+            alloc_count = f"{direct_alloc_count:,} allocs"
+            print(f"  {Grey}// directly owned (or unannotated):")
+            print(
+                f"  {Grey}// └── {BB_G}{alloc_bytes}{RE}{Grey} across {BB_B}{alloc_count}{RE}"
+            )
+        if len(indirect_child_data) > 0:
+            print(f"  {Grey}// children on heap:")
+            items: list[tuple[type_index_t, AllocCount]] = sorted(
+                list(indirect_child_data.items()),
+                key=lambda ent: record.get_type_name(ent[0]),
+            )
+            last_i = len(items) - 1
+            for i, (tid, alloc_count) in enumerate(items):
+                alloc_bytes = f"{alloc_count.alloc_bytes:,}" + " bytes"
+                alloc_count = f"{alloc_count.alloc_count:,}" + " allocs"
+                prefix = "├── " if i < last_i else "└── "
+                print(
+                    f"  {Grey}// {BOLD}{prefix}{bb_green(alloc_bytes)}{Grey} across {bb_blue(alloc_count)}{Grey} : {record.get_type_name(tid)}"
+                )
+
+    print("};")
     print()
 
 
@@ -510,10 +535,10 @@ def stats(
         int | None,
         typer.Option(help="Only show entries that take at least this many bytes"),
     ] = None,
-    exclude_self: Annotated[
+    include_self: Annotated[
         bool,
         typer.Option(
-            help="Typically the size of an object is given by (dynamic allocations) + (sizeof(object) * num_objects). If --exclude-self is passed, only dynamic allocations are counted."
+            help="Typically only dynamic allocations for an object will be reported. If --inlude-self is passed, then the size of the object itself will be included."
         ),
     ] = False,
     top_n_layouts: Annotated[
@@ -561,7 +586,7 @@ def stats(
             untyped_allocations_count += 1
             untyped_allocations += event.alloc_size
 
-    if not exclude_self:
+    if include_self:
         for k, e in counts.items():
             e.byte_count += record.get_type_size(k) * e.num_objects()
 
@@ -621,6 +646,7 @@ def stats(
     _print_alloc_stat("<total>", total_object_count, total_all_frees, tag_style=BB_W)
 
     if top_n_layouts > 0:
+        print()
         entries = sorted_types[:top_n_layouts]
         for _, _, _, tid in entries:
             get_stats_for_type(tid, record)
