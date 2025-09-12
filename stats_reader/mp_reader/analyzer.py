@@ -383,33 +383,91 @@ def get_stats_for_type(
     def _key(x: Field | Base | ChildAllocStats):
         match x:
             case Base():
-                return (x.offset, x.size, 0)
+                return (x.offset, 0, x.size)
             case Field():
-                return (x.offset, x.size, 1)
+                return (x.offset, 1, x.size)
             case ChildAllocStats():
-                return (x.offset, x.size, 2)
+                return (x.offset, 2, x.size)
+
+    max_field_type_len = 0
+    for e in results:
+        match e:
+            case Field():
+                max_field_type_len = max(len(e.type_name), max_field_type_len)
+            case _:
+                continue
+
 
     results.sort(key=_key)
 
-    print(f"{bb_yellow('struct')} {bb_cyan(type_data.name)}:")
+    print(f"{bb_yellow('struct')} {bb_cyan(type_data.name)}")
+    base_prefix = ': '
+    needs_open_bracket = True
+    needs_newline = False
+    last_offset = 0
+    last_child_size = 0
+    last_child_str: str = ''
+    last_print_was_stats = False
     for e in results:
         match e:
             case Base():
+                last_offset = e.offset
+                last_child_size = e.size
+                if needs_newline:
+                    needs_newline = False
+                    print()
                 start, end = e.offset, e.offset + e.size
                 _range = f"bytes {start:<4}..{end:<4} in object"
                 tag = "(base)"
-                print(f"  {bb_cyan(e.type_name)} (base)")
+                last_child_str = f"  {base_prefix}{bb_cyan(e.type_name)} (base)"
+                print(last_child_str, end='')
+                last_print_was_stats = False
+                needs_newline = True
+                base_prefix = ', '
             case Field():
+                last_offset = e.offset
+                last_child_size = e.size
+                if needs_newline:
+                    print()
+                    needs_newline = False
+                if needs_open_bracket:
+                    print("{")
+                    needs_open_bracket = False
                 start, end = e.offset, e.offset + e.size
                 _range = f"bytes {start:<4}..{end:<4} in object"
                 tag = e.field_name
-                print(f"  {bb_cyan(e.type_name):<24} {bb_green(tag)};")
+                if tag == "":
+                    tag = "(unnamed)";
+                last_child_str = f"  {bb_cyan(e.type_name):<{max_field_type_len}} {bb_green(tag)};"
+                print(last_child_str, end='')
+                last_print_was_stats = False
+                needs_newline = True
             case ChildAllocStats():
+                # Ensure that this stat has the same indent of the previous one
+                if last_print_was_stats:
+                    print(' ' * len_without_color(last_child_str), end='')
+                inner_offset_str = ''
+                if e.size < last_child_size:
+                    # We're inside a c-style array or we were allocated in a buffer...
+                    inner_offset = (e.offset - last_offset)
+                    if inner_offset % e.size == 0:
+                        array_index = inner_offset // e.size
+                        inner_offset_str = f"[{array_index}] "
+                    else:
+                        inner_offset_str = f"+{inner_offset} "
                 alloc_bytes = f"{e.alloc_count.alloc_bytes:,}" + " bytes"
                 alloc_count = f"{e.alloc_count.alloc_count:,}" + " allocs"
                 print(
-                    f"  └── {bb_green(alloc_bytes)} across {bb_blue(alloc_count)} : {st(Grey, e.type_name)}\n"
+                    f"  {Grey}// {inner_offset_str}{RE}{bb_green(alloc_bytes)}{Grey} across {RE}{bb_blue(alloc_count)}{Grey} : {e.type_name}"
                 )
+                last_print_was_stats = True
+                needs_newline = False
+    if needs_open_bracket:
+        print("{")
+    if needs_newline:
+        print()
+        needs_newline = False
+    print("};")
     if direct_alloc_count > 0:
         print(f"  indirect allocs:")
         alloc_bytes = f"{direct_alloc_bytes:,}" + " bytes"
@@ -427,6 +485,8 @@ def get_stats_for_type(
             print(
                 f"    {bb_green(alloc_bytes)} across {bb_blue(alloc_count)} : {st(Grey, record.get_type_name(tid))}"
             )
+
+    print()
 
 
 @dataclass
