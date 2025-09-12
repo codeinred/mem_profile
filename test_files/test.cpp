@@ -1,6 +1,8 @@
 
 #include <array>
 #include <cstdio>
+#include <utility>
+#include <vector>
 extern "C" int puts(char const*);
 
 #include <mp_unwind/mp_unwind.h>
@@ -16,13 +18,27 @@ struct Empty {};
 
 namespace my_ns {
 
-bool do_trace = true;
+bool do_trace = false;
 struct Foo {
     int*   arr;
     size_t size;
     Foo() : Foo(5) {}
+    Foo(Foo const& f) : Foo(f.size) {
+        for (size_t i = 0; i < size; i++) {
+            arr[i] = f.arr[i];
+        }
+    }
+    Foo(Foo&& f) noexcept : arr(f.arr), size(f.size) {
+        f.arr  = nullptr;
+        f.size = 0;
+    }
     Foo(size_t size) : arr(new int[size]), size(size) {}
 
+    Foo& operator=(Foo rhs) noexcept {
+        std::swap(arr, rhs.arr);
+        std::swap(size, rhs.size);
+        return *this;
+    }
     int sum() const noexcept {
         int sum = 0;
         for (size_t i = 0; i < size; i++) {
@@ -58,6 +74,11 @@ struct Bar {
 };
 
 struct Super : Empty, Foo, Bar {
+    Super() = default;
+    Super(int count) : Foo(count) {}
+
+    int foo() { return 0; }
+
     int field1;
     int field2;
     int field3;
@@ -67,11 +88,21 @@ struct Test3 {
     ~Test3() {}
 };
 
+auto getLambda() {
+    return [s = std::array<my_ns::Super, 2>{10, 20}, x = 0]() { printf("s addr = %p\n", &s); };
+}
 [[gnu::noinline]]
 void do_stuff() {
-    auto myLambda = [s = std::array<my_ns::FooT<my_ns::Super>, 2>(), x = 0] {
 
-    };
+
+    std::vector<decltype(getLambda())> v;
+    v.reserve(10);
+    for (size_t i = 0; i < 10; i++) {
+        v.push_back(getLambda());
+    }
+    for(auto const& elem : v) {
+        elem();
+    }
 }
 } // namespace my_ns
 
