@@ -9,6 +9,7 @@ from .malloc_stats import (
     ObjectEnt,
     OutputEvent,
     OutputObjectInfo,
+    EventType,
     Loc,
     EventType,
     size_t,
@@ -16,7 +17,7 @@ from .malloc_stats import (
     type_index_t,
 )
 import typing
-from typing import Annotated
+from typing import Annotated, Literal
 from pathlib import Path
 from .tree import Tree, print_tree
 from .color import *
@@ -48,8 +49,13 @@ def print_event_trace(
     record: OutputRecord,
     event_id: int,
     file: typing.IO | None = None,
-    skip_inline=True,
-    show_bin_addr=True,
+    skip_frames: int = 0,
+    skip_inline: bool = True,
+    show_bin_addr: bool = True,
+    show_event_type: bool = True,
+    show_event_id: bool = True,
+    show_event_addr: bool = True,
+    show_event_size: bool = True,
 ):
     event = record.event_table[event_id]
     objects = event.expand_objects(record)
@@ -57,7 +63,7 @@ def print_event_trace(
     frames = []
 
     frame_table = record.frame_table
-    for pid, obj in zip(event.pc_id, objects):
+    for pid, obj in zip(event.pc_id[skip_frames:], objects[skip_frames:]):
         pc = frame_table.pc[pid]
         object_path = record.get_object_path(pid)
         object_addr = record.get_object_address(pid)
@@ -87,16 +93,63 @@ def print_event_trace(
 
         frames.extend(ent)
 
-    t = Tree(
-        [
-            f'{bold_white("id")}: {bb_green(event.id)}',
-            f'{bold_white("type")}: {bb_green(event.type.value)}',
-            f'{bold_white("addr")}: {bb_green(event.alloc_addr):x}',
-            f'{bold_white("size")}: {bb_green(event.alloc_size)}',
-        ],
-        frames,
-    )
-    print_tree(t, file=file)
+    header = []
+    if show_event_id:
+        header.append(f'{bold_white("id")}: {bb_green(event.id)}')
+    if show_event_type:
+        header.append(f'{bold_white("type")}: {bb_green(event.type.value)}')
+    if show_event_addr:
+        header.append(f'{bold_white("addr")}: {bb_green(event.alloc_addr):x}')
+    if show_event_size:
+        header.append(f'{bold_white("size")}: {bb_green(event.alloc_size)}')
+    if len(header) == 0:
+        header = ["<event>"]
+    print_tree(Tree(header, frames), file=file)
+
+
+def dump_events(
+    input_file: Annotated[Path, typer.Argument(help="Path to malloc_stats.json file")],
+    skip_inline: Annotated[
+        bool, typer.Option(help="Filter out inline frames from the trace")
+    ] = False,
+    show_bin_addr: Annotated[
+        bool, typer.Option(help="Show addresses within the executable")
+    ] = False,
+    event_type: Annotated[
+        EventType | None, typer.Option(help="Filter by event type")
+    ] = None,
+    skip_frames: Annotated[
+        int, typer.Option(help="Skip the top N frames at the start of the trace")
+    ] = 0,
+    show_event_type: Annotated[
+        bool, typer.Option(help="show event type in trace")
+    ] = True,
+    show_event_id: Annotated[bool, typer.Option(help="show event id in trace")] = True,
+    show_event_addr: Annotated[
+        bool, typer.Option(help="show event addr in trace")
+    ] = True,
+    show_event_size: Annotated[
+        bool, typer.Option(help="show event size in trace")
+    ] = True,
+) -> None:
+    from .loader import load_from_file
+
+    record: OutputRecord = load_from_file(input_file)
+
+    for i in range(len(record.event_table)):
+        current_event_type = record.event_table[i].type
+        if event_type is None or event_type == current_event_type:
+            print_event_trace(
+                record,
+                i,
+                skip_inline=skip_inline,
+                show_bin_addr=show_bin_addr,
+                skip_frames=skip_frames,
+                show_event_type=show_event_type,
+                show_event_id=show_event_id,
+                show_event_addr=show_event_addr,
+                show_event_size=show_event_size,
+            )
 
 
 def get_objects(record: OutputRecord) -> dict[int, ObjectTree]:
@@ -345,16 +398,12 @@ def get_stats_for_type(
                 start, end = e.offset, e.offset + e.size
                 _range = f"bytes {start:<4}..{end:<4} in object"
                 tag = "(base)"
-                print(
-                    f"  {bb_cyan(e.type_name)} (base)"
-                )
+                print(f"  {bb_cyan(e.type_name)} (base)")
             case Field():
                 start, end = e.offset, e.offset + e.size
                 _range = f"bytes {start:<4}..{end:<4} in object"
                 tag = e.field_name
-                print(
-                    f"  {bb_cyan(e.type_name):<24} {bb_green(tag)};"
-                )
+                print(f"  {bb_cyan(e.type_name):<24} {bb_green(tag)};")
             case ChildAllocStats():
                 alloc_bytes = f"{e.alloc_count.alloc_bytes:,}" + " bytes"
                 alloc_count = f"{e.alloc_count.alloc_count:,}" + " allocs"
@@ -365,22 +414,19 @@ def get_stats_for_type(
         print(f"  indirect allocs:")
         alloc_bytes = f"{direct_alloc_bytes:,}" + " bytes"
         alloc_count = f"{direct_alloc_count:,}" + " allocs"
-        print(
-            f"    {bb_green(alloc_bytes)} across {bb_blue(alloc_count)}"
-        )
+        print(f"    {bb_green(alloc_bytes)} across {bb_blue(alloc_count)}")
     if len(indirect_child_data) > 0:
         print(f"  indirect children: n={len(indirect_child_data)}")
         items: list[tuple[type_index_t, AllocCount]] = sorted(
             list(indirect_child_data.items()),
-            key = lambda ent: record.get_type_name(ent[0])
+            key=lambda ent: record.get_type_name(ent[0]),
         )
-        for (tid, alloc_count) in items:
+        for tid, alloc_count in items:
             alloc_bytes = f"{alloc_count.alloc_bytes:,}" + " bytes"
             alloc_count = f"{alloc_count.alloc_count:,}" + " allocs"
             print(
                 f"    {bb_green(alloc_bytes)} across {bb_blue(alloc_count)} : {st(Grey, record.get_type_name(tid))}"
             )
-
 
 
 @dataclass
