@@ -5,6 +5,7 @@ https://stackoverflow.com/a/33206814
 """
 
 import typing
+import re
 from dataclasses import dataclass
 
 
@@ -48,6 +49,13 @@ BB_M = "\033[95;1m"  # Bright (Bold) Magenta
 BB_C = "\033[96;1m"  # Bright (Bold) Cyan
 BB_W = "\033[97;1m"  # Bright (Bold) White
 
+COLOR_REGEX = re.compile("\033\\[[0-9;]*m")
+
+def strip_color(item: str) -> str:
+    return COLOR_REGEX.sub('', item)
+def len_without_color(input: str) -> int:
+    """Return the length of a string with all colors removed"""
+    return len(input) - sum(len(match) for match in COLOR_REGEX.findall(input))
 
 @dataclass
 class Styled:
