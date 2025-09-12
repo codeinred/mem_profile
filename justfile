@@ -79,6 +79,12 @@ ast_dump *args:
 clang-tidy *args:
     {{clang_tidy}} {{args}}
 
+mp_reader *args:
+    env \
+        "PYTHONPATH={{cwd}}/stats_reader" \
+        uv run --project "{{cwd}}/stats_reader" \
+        python -m mp_reader {{args}}
+
 build_example: install
     cmake -S examples \
         -B examples/build \
