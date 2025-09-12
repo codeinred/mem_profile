@@ -290,7 +290,6 @@ global_context::~global_context() { generate_report(); }
 #include <cstring>
 #include <mem_profile/abi.h>
 #include <mem_profile/containers.h>
-#include <mem_profile/sym_info.h>
 
 #include <mem_profile/output_record.h>
 #include <mem_profile/output_record_io.h>
