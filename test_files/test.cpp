@@ -1,6 +1,6 @@
 
-#include <cstdio>
 #include <array>
+#include <cstdio>
 extern "C" int puts(char const*);
 
 #include <mp_unwind/mp_unwind.h>
@@ -33,7 +33,7 @@ struct Foo {
 
     ~Foo() {
         char buff[1024];
-        std::sprintf(buff, "Deleting array @ %p", arr);
+        std::snprintf(buff, sizeof(buff), "Deleting array @ %p", arr);
         puts(buff);
         delete[] arr;
 
