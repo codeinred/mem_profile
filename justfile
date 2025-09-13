@@ -87,6 +87,7 @@ mp_reader *args:
 
 build_example: install
     cmake -S examples \
+        -G Ninja \
         -B examples/build \
         -DCMAKE_PREFIX_PATH={{install_dir}} \
         -DCMAKE_CXX_COMPILER={{clang_cxx}} \
@@ -120,6 +121,11 @@ gen_test_files: build_example
     @just _gen_test_file simple_nested_objects
     @just _gen_test_file single_alloc
     @just _gen_test_file string
+    @just _gen_test_file objects_in_array
+    @just _gen_test_file objects_in_vector
+    @just _gen_test_file objects_in_variant
+    @just _gen_test_file objects_in_union
+    @just _gen_test_file tuplet_demo
 
 run_example example: build_example
     examples/build/{{example}}
