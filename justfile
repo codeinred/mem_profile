@@ -125,6 +125,7 @@ gen_test_files: build_example
     @just _gen_test_file objects_in_vector
     @just _gen_test_file objects_in_variant
     @just _gen_test_file objects_in_union
+    @just _gen_test_file objects_in_lambda
     @just _gen_test_file tuplet_demo
 
 run_example example: build_example
