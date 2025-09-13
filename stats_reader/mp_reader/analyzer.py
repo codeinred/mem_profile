@@ -275,6 +275,7 @@ def get_stats_for_type(
     record: OutputRecord,
     select_events: typing.Iterable[int] | None = None,
     show_offsets: bool = False,
+    clean_members: bool = False,
 ):
     if select_events is None:
         select_events = range(len(record.event_table))
@@ -395,6 +396,37 @@ def get_stats_for_type(
             case ChildAllocStats():
                 return (x.offset, 2, x.size)
 
+    results.sort(key=_key)
+
+    num_cleaned_fields = 0
+    num_cleaned_bases = 0
+    if clean_members:
+        # Clean any members that don't have a corresponding allocation
+        results_tmp = [
+            r
+            for (i, r) in enumerate(results)
+            if (
+                isinstance(r, ChildAllocStats)
+                or (
+                    (i + 1) < len(results)
+                    and isinstance(results[i + 1], ChildAllocStats)
+                )
+            )
+        ]
+        results = results_tmp
+        new_base_count = 0
+        new_field_count = 0
+        for e in results:
+            match e:
+                case Field():
+                    new_field_count += 1
+                case Base():
+                    new_base_count += 1
+                case _:
+                    continue
+        num_cleaned_fields = len(type_data.field_offsets) - new_field_count
+        num_cleaned_bases = len(type_data.base_offsets) - new_base_count
+
     max_field_type_len = 0
     max_base_type_len = 0
     for e in results:
@@ -406,7 +438,6 @@ def get_stats_for_type(
             case _:
                 continue
 
-    results.sort(key=_key)
 
     base_prefix = ": "
     needs_open_bracket = True
@@ -415,13 +446,15 @@ def get_stats_for_type(
     last_child_size = 0
     last_child_str: str = ""
     last_print_was_stats = False
+    num_cleaned_fields_printed = False
 
     print(f"{Grey}// Totals for {type_data.name}{RE}")
     print(
         f"{Grey}// └── {BB_G}{total_allocated_bytes:,} bytes{RE}{Grey} across {BB_B}{total_alloc_count} allocs{RE}"
     )
     print(f"{bb_yellow('struct')} {bb_cyan(type_data.name)}")
-
+    if num_cleaned_bases != 0:
+        print(f"  {Grey}// ({num_cleaned_bases} non-owning bases cleaned){RE}")
     for e in results:
         match e:
             case Base():
@@ -447,6 +480,9 @@ def get_stats_for_type(
                         print(" {")
                     else:
                         print("{")
+                    if num_cleaned_fields > 0:
+                        print(f"  {Grey}// ({num_cleaned_fields} non-owning fields cleaned){RE}")
+                        num_cleaned_fields_printed = True
                     needs_open_bracket = False
                     needs_newline = False
                 if needs_newline:
@@ -496,6 +532,8 @@ def get_stats_for_type(
 
     has_other_allocs = direct_alloc_count > 0 or len(indirect_child_data) > 0
 
+    if num_cleaned_fields > 0 and not num_cleaned_fields_printed:
+        print(f"  {Grey}// ({num_cleaned_fields} non-owning fields cleaned){RE}")
     if has_other_allocs:
         print()
         print(f"  {BB_C}~{type_data.name}();{RE}")
@@ -557,8 +595,20 @@ def stats(
         int, typer.Option(help="Print the layout stats for the top n largest types")
     ] = 0,
     show_offsets: Annotated[
-        bool, typer.Option(help="Show offsets when printing allocations in members and bases")
+        bool,
+        typer.Option(
+            help="Show offsets when printing allocations in members and bases"
+        ),
     ] = False,
+    clean_members: Annotated[
+        bool, typer.Option(help="Clean up fields that don't result in allocations")
+    ] = False,
+    strip_from_strings: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="Strip a substring from all the strings in the strtab. Useful for cleaning up output"
+        ),
+    ] = None,
 ) -> None:
     """
     Print allocation statistics by type, sorted by total bytes allocated.
@@ -571,6 +621,11 @@ def stats(
     record: OutputRecord = load_from_file(input_file)
 
     record.clean()
+
+    if strip_from_strings:
+        for s in strip_from_strings:
+            for i in range(len(record.strtab)):
+                record.strtab[i] = record.strtab[i].replace(s, "")
 
     # Dictionary to track total bytes allocated by type_data index
     counts: dict[int, _counts] = defaultdict(_counts)
@@ -664,4 +719,6 @@ def stats(
         print()
         entries = sorted_types[:top_n_layouts]
         for _, _, _, tid in entries:
-            get_stats_for_type(tid, record, show_offsets=show_offsets)
+            get_stats_for_type(
+                tid, record, show_offsets=show_offsets, clean_members=clean_members
+            )
