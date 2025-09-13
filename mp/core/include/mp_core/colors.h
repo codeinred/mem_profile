@@ -23,7 +23,7 @@
 #define MP_COLOR_BW "\033[1;97m"
 
 // specify gray as an RGB color
-#define MP_COLOR_GRAY "\033[32;2;131;148;150m"
+#define MP_COLOR_GRAY "\033[38;2;190;190;180"
 
 namespace mp::colors {
 // Reset
