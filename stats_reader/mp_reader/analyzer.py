@@ -271,7 +271,10 @@ class ChildAllocStats:
 
 
 def get_stats_for_type(
-    tid: int, record: OutputRecord, select_events: typing.Iterable[int] | None = None
+    tid: int,
+    record: OutputRecord,
+    select_events: typing.Iterable[int] | None = None,
+    show_offsets: bool = False,
 ):
     if select_events is None:
         select_events = range(len(record.event_table))
@@ -414,7 +417,9 @@ def get_stats_for_type(
     last_print_was_stats = False
 
     print(f"{Grey}// Totals for {type_data.name}{RE}")
-    print(f"{Grey}// └── {BB_G}{total_allocated_bytes:,} bytes{RE}{Grey} across {BB_B}{total_alloc_count} allocs{RE}")
+    print(
+        f"{Grey}// └── {BB_G}{total_allocated_bytes:,} bytes{RE}{Grey} across {BB_B}{total_alloc_count} allocs{RE}"
+    )
     print(f"{bb_yellow('struct')} {bb_cyan(type_data.name)}")
 
     for e in results:
@@ -427,7 +432,9 @@ def get_stats_for_type(
                     print()
                 start, end = e.offset, e.offset + e.size
                 _range = f"bytes {start:<4}..{end:<4} in object"
-                last_child_str = f"  {base_prefix}{bb_cyan(e.type_name):<{max_base_type_len}}"
+                last_child_str = (
+                    f"  {base_prefix}{bb_cyan(e.type_name):<{max_base_type_len}}"
+                )
                 print(last_child_str, end="")
                 last_print_was_stats = False
                 needs_newline = True
@@ -446,7 +453,6 @@ def get_stats_for_type(
                     print()
                     needs_newline = False
                 start, end = e.offset, e.offset + e.size
-                _range = f"bytes {start:<4}..{end:<4} in object"
                 tag = e.field_name
                 if tag == "":
                     tag = "(unnamed)"
@@ -471,8 +477,14 @@ def get_stats_for_type(
                         inner_offset_str = f"+{inner_offset} "
                 alloc_bytes = f"{e.alloc_count.alloc_bytes:,}" + " bytes"
                 alloc_count = f"{e.alloc_count.alloc_count:,}" + " allocs"
+                start, end = e.offset, e.offset + e.size
+                if show_offsets:
+                    _range = f"{start}..{end:>3}"
+                    _range = f"{bb_yellow(_range):>8}  "
+                else:
+                    _range = ""
                 print(
-                    f" {Grey}// {inner_offset_str}{RE}{bb_green(alloc_bytes)}{Grey} across {RE}{bb_blue(alloc_count)}{Grey} : {e.type_name}{RE}"
+                    f" {Grey}// {inner_offset_str}{_range}{RE}{bb_green(alloc_bytes)}{Grey} across {RE}{bb_blue(alloc_count)}{Grey} : {e.type_name}{RE}"
                 )
                 last_print_was_stats = True
                 needs_newline = False
@@ -544,6 +556,9 @@ def stats(
     top_n_layouts: Annotated[
         int, typer.Option(help="Print the layout stats for the top n largest types")
     ] = 0,
+    show_offsets: Annotated[
+        bool, typer.Option(help="Show offsets when printing allocations in members and bases")
+    ] = False,
 ) -> None:
     """
     Print allocation statistics by type, sorted by total bytes allocated.
@@ -649,4 +664,4 @@ def stats(
         print()
         entries = sorted_types[:top_n_layouts]
         for _, _, _, tid in entries:
-            get_stats_for_type(tid, record)
+            get_stats_for_type(tid, record, show_offsets=show_offsets)
