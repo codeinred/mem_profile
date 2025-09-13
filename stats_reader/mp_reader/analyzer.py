@@ -414,7 +414,7 @@ def get_stats_for_type(
     last_print_was_stats = False
 
     print(f"{Grey}// Totals for {type_data.name}{RE}")
-    print(f"{Grey}// └── {BB_G}{total_allocated_bytes:,} bytes{RE}{Grey} across {BB_C}{total_alloc_count} allocs{RE}")
+    print(f"{Grey}// └── {BB_G}{total_allocated_bytes:,} bytes{RE}{Grey} across {BB_B}{total_alloc_count} allocs{RE}")
     print(f"{bb_yellow('struct')} {bb_cyan(type_data.name)}")
 
     for e in results:
