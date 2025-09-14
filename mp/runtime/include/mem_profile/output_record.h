@@ -9,9 +9,16 @@
 #include <mem_profile/counters.h>
 #include <mp_error/error.h>
 #include <mp_types/types.h>
+#include <string_view>
 
 
 namespace mp {
+inline std::string_view _safe_sv(char const* cstr) {
+    if (cstr == nullptr) {
+        return std::string_view();
+    }
+    return std::string_view(cstr);
+}
 using ankerl::unordered_dense::map;
 using ankerl::unordered_dense::set;
 
@@ -64,7 +71,8 @@ struct string_table {
         if (!is_new) return it->second;
 
         // Insert as regular string_view
-        auto result = insert_static(key);
+
+        auto result = insert_static(_safe_sv(key));
 
         // Ensure that our cstr_lookup knows about the correct index
         it->second = result;
