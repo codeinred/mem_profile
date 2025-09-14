@@ -551,6 +551,22 @@ class OutputRecord:
         complete.extend(open_chains.values())
         return complete
 
+    def event_chains_at_time(self, eid_cutoff: int) -> list[list[int]]:
+        """Returns each chain of events: the allocation, followed by any reallocs, followed by any free (if one exists)
+
+        Returns only the chains that were alive at the time of the given event
+        """
+
+        def is_alive(chain: list[int]) -> bool:
+            start_eid = chain[0]
+            end_eid = chain[-1]
+            is_released = self.event_table[end_eid].type == EventType.FREE
+            return start_eid <= eid_cutoff and (
+                (not is_released) or eid_cutoff <= end_eid
+            )
+
+        return list(filter(is_alive, self.event_chains()))
+
 @dataclass
 class ObjectTree:
     type_name: str
