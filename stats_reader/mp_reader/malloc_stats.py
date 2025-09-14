@@ -102,7 +102,7 @@ class OutputObjectInfo:
     def depth(self) -> int:
         return len(self.type_data)
 
-    def reverse(self) -> 'OutputObjectInfo':
+    def reverse(self) -> "OutputObjectInfo":
         """Return a new OutputObjectInfo which reverses the order of all entries
         in the OutputObjectInfo.
 
@@ -168,14 +168,15 @@ class OutputTypeData:
 
     def field_slice(self, i: int) -> slice:
         """Return the fields corresponding to the given index into the type data table"""
-        return slice(self.field_off[i], self.field_off[i+1])
+        return slice(self.field_off[i], self.field_off[i + 1])
 
     def base_slice(self, i: int) -> slice:
         """Return the bases corresponding to the given index into the type data table"""
-        return slice(self.base_off[i], self.base_off[i+1])
+        return slice(self.base_off[i], self.base_off[i + 1])
 
     def num_entries(self) -> int:
         return len(self.size)
+
 
 @dataclass
 class TypeData:
@@ -210,6 +211,7 @@ def get_offset(parent_range: range, addr: int) -> addr_t | None:
         return addr - parent_range.start
     else:
         return None
+
 
 @dataclass
 class OutputEvent:
@@ -249,7 +251,13 @@ class OutputEvent:
                 reversed(object_info.size),
                 reversed(object_info.type),
             ):
-                entries[i] = ObjectEnt(object_id, addr, size, get_offset(parent_range, addr), ctx.strtab[type])
+                entries[i] = ObjectEnt(
+                    object_id,
+                    addr,
+                    size,
+                    get_offset(parent_range, addr),
+                    ctx.strtab[type],
+                )
                 parent_range = range(addr, addr + size)
         return entries
 
