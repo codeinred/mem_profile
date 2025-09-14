@@ -24,7 +24,11 @@ include(cmake/get_cpm.cmake)
 
 
 CPMAddPackage("gh:fmtlib/fmt#11.2.0")
-CPMAddPackage("gh:jeremy-rifkin/cpptrace@1.0.4")
+CPMAddPackage(
+    URI "gh:jeremy-rifkin/cpptrace@1.0.4"
+    OPTIONS
+        "CPPTRACE_DISABLE_CXX_20_MODULES TRUE"
+)
 CPMAddPackage("gh:stephenberry/glaze@3.0.0")
 
 add_library(ankerl_unordered_dense INTERFACE)
