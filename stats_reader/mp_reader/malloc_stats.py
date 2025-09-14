@@ -469,6 +469,46 @@ class OutputRecord:
             ]
             e.object_info.clean(good)
 
+    def get_memory_over_time(self) -> tuple[
+        npt.NDArray[np.int64],
+        npt.NDArray[np.int64],
+    ]:
+        """
+        Returns two arrays.
+
+        - The first array is the total number of allocations
+        - The second array is the total number of allocated bytes
+
+        These are measurments 'over time', where each entry corresponds to an event.
+        """
+        living_allocs = 0
+        living_bytes = 0
+
+        # Stores the last event at a given address
+        prev_event: dict[addr_t, OutputEvent] = {}
+
+        event_count: int = len(self.event_table)
+
+        alloc_counts = np.zeros(event_count, dtype=np.int64)
+        byte_counts = np.zeros(event_count, dtype=np.int64)
+
+        for i, e in enumerate(self.event_table):
+            match e.type:
+                case EventType.FREE:
+                    living_allocs -= 1
+                    living_bytes -= e.alloc_size
+                case EventType.ALLOC:
+                    living_allocs += 1
+                    living_bytes += e.alloc_size
+                case EventType.REALLOC:
+                    e_prior = prev_event[e.alloc_hint]
+                    living_bytes -= e_prior.alloc_size
+                    living_bytes += e.alloc_size
+            prev_event[e.alloc_addr] = e
+
+            alloc_counts[i] = living_allocs
+            byte_counts[i] = living_bytes
+        return (alloc_counts, byte_counts)
 
 @dataclass
 class ObjectTree:
