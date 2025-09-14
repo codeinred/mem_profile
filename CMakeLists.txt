@@ -206,7 +206,7 @@ mp_make_shared(
 )
 
 if(LINUX)
-    target_link_libraries(mp_unwind_shared PRIVATE PkgConfig::libunwind)
+    target_link_libraries(mp_unwind PRIVATE PkgConfig::libunwind)
 endif()
 
 
