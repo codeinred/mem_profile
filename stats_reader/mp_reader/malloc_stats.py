@@ -452,11 +452,20 @@ class OutputRecord:
             if e.type != EventType.FREE:
                 continue
             object_info: OutputObjectInfo = e.object_info
-            trace_pc_ids = [e.pc_id[trace_index] for trace_index in object_info.trace_index]
+            trace_pc_ids = [
+                e.pc_id[trace_index] for trace_index in object_info.trace_index
+            ]
 
             good = [
-                i for i in range(len(trace_pc_ids)) if trace_pc_ids
-                if '::~' in self.strtab[self.frame_table.func[self.frame_table.offsets[trace_pc_ids[i] + 1] - 1]]
+                i
+                for i in range(len(trace_pc_ids))
+                if trace_pc_ids
+                if "::~"
+                in self.strtab[
+                    self.frame_table.func[
+                        self.frame_table.offsets[trace_pc_ids[i] + 1] - 1
+                    ]
+                ]
             ]
             e.object_info.clean(good)
 
