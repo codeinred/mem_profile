@@ -516,6 +516,41 @@ class OutputRecord:
         alloc_counts, byte_counts = self.get_memory_over_time()
         return int(alloc_counts[-1]), int(byte_counts[-1])
 
+    def event_chains(self) -> list[list[int]]:
+        """Returns each chain of events: the allocation, followed by any reallocs, followed by any free (if one exists)"""
+        complete: list[list[int]] = []
+
+        open_chains: dict[addr_t, list[int]] = defaultdict(list)
+
+        for i, e in enumerate(self.event_table):
+            match e.type:
+                case EventType.ALLOC:
+                    chain = open_chains[e.alloc_addr]
+                    chain.append(i)
+
+                case EventType.FREE:
+                    chain = open_chains[e.alloc_addr]
+                    chain.append(i)
+
+                    # Clean up the chain - it's no longer open
+                    del open_chains[e.alloc_addr]
+                    complete.append(chain)
+
+                case EventType.REALLOC:
+                    if e.alloc_hint == 0 or e.alloc_hint == e.alloc_addr:
+                        # treat like a malloc
+                        chain = open_chains[e.alloc_addr]
+                        chain.append(i)
+                    else:
+                        chain = open_chains[e.alloc_hint]
+                        chain.append(i)
+                        # Move the entry to the new location
+                        del open_chains[e.alloc_hint]
+                        open_chains[e.alloc_addr] = chain
+
+        complete.extend(open_chains.values())
+        return complete
+
 @dataclass
 class ObjectTree:
     type_name: str
