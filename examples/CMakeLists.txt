@@ -13,11 +13,12 @@ CPMAddPackage("gh:codeinred/tuplet@2.1.1")
 
 file(GLOB examples src/*.cpp)
 
-add_compile_options(-Og -g)
+add_compile_options($<$<CONFIG:Debug>:-Og> -g)
 
 foreach(file IN LISTS examples)
     cmake_path(GET file STEM target_name)
     add_executable(${target_name} ${file})
+    target_include_directories(${target_name} PRIVATE include/)
 endforeach()
 
 target_link_libraries(tuplet_demo tuplet::tuplet)

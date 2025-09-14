@@ -92,7 +92,7 @@ build_example: install
         -DCMAKE_PREFIX_PATH={{install_dir}} \
         -DCMAKE_CXX_COMPILER={{clang_cxx}} \
         -DCMAKE_C_COMPILER={{clang_cc}} \
-        -DCMAKE_BUILD_TYPE=Debug
+        -DCMAKE_BUILD_TYPE=Release
     cmake --build examples/build
     @just {{dsymutil_tgt}} build/libmp_runtime.{{lib_ext}}
 
