@@ -603,6 +603,20 @@ class OutputRecord:
 
         return result
 
+    def peak_usage(self) -> tuple[int, int, int]:
+        """
+        Gets the peak usage, by number of bytes allocated.
+
+        Returns a tuple of (event id, num allocations, bytes allocated)
+        """
+
+        alloc_counts, byte_counts = self.get_memory_over_time()
+
+        eid = np.argmax(byte_counts)
+
+        return int(eid), int(alloc_counts[eid]), int(byte_counts[eid])
+
+
 @dataclass
 class ObjectTree:
     type_name: str
