@@ -448,7 +448,7 @@ def get_stats_for_type(
     last_print_was_stats = False
     num_cleaned_fields_printed = False
 
-    print(f"{Grey}// Totals for {type_data.name}{RE}")
+    print(f"{Grey}// Totals for {type_data.name}{RE} {BB_Y}sizeof{RE}{Grey}={type_data.size:,} bytes{RE}")
     print(
         f"{Grey}// └── {BB_G}{total_allocated_bytes:,} bytes{RE}{Grey} across {BB_B}{total_alloc_count} allocs{RE}"
     )
