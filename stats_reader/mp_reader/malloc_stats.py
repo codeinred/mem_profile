@@ -510,6 +510,12 @@ class OutputRecord:
             byte_counts[i] = living_bytes
         return (alloc_counts, byte_counts)
 
+    def still_reachable(self) -> tuple[int, int]:
+        """Return the number of allocations and bytes for which a free event was not recorded"""
+
+        alloc_counts, byte_counts = self.get_memory_over_time()
+        return int(alloc_counts[-1]), int(byte_counts[-1])
+
 @dataclass
 class ObjectTree:
     type_name: str
