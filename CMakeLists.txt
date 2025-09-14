@@ -17,7 +17,7 @@ option(
     OFF)
 
 if(UNIX)
-    add_compile_options(-Wall -fcolor-diagnostics -g)
+    add_compile_options(-Wall -fdiagnostics-color=always -g)
 endif()
 
 include(cmake/get_cpm.cmake)
