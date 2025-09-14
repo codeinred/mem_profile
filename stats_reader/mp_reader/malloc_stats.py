@@ -7,6 +7,10 @@ Replicates the C++ structures defined in mem_profile/output_record.h
 from dataclasses import dataclass
 from enum import Enum
 import typing
+import numpy as np
+import numpy.typing as npt
+import copy
+from collections import defaultdict
 
 # Type aliases matching C++ types
 addr_t = int  # uintptr_t
