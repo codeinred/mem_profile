@@ -567,6 +567,42 @@ class OutputRecord:
 
         return list(filter(is_alive, self.event_chains()))
 
+    def pseudo_frees_at_time(self, eid_cutoff: int) -> list[OutputEvent]:
+        """
+        1. Get all event chains corresponding to memory alive at the given
+           input event.
+        2. If an event chain contains reallocs, update the free to be the size
+           of the last realloc that occurred at or prior to the event
+        3. Return the frees
+        """
+
+        result: list[OutputEvent] = []
+        for chain in self.event_chains_at_time(eid_cutoff):
+            free_eid = chain[-1]
+            free_event: OutputEvent = self.event_table[free_eid]
+            if free_event.type != EventType.FREE:
+                # Someone forgot to free memory, or the snapshot was taken
+                # before the memory was freed so we don't have object info
+                continue
+            # Get entries in the chain leading up to the free, then
+            # Filter the chain to avoid any reallocs occuring after the cutoff
+            # Then get the last alloc that was before the cutoff
+            alloc_eid = [eid for eid in chain[:-1] if eid <= eid_cutoff][-1]
+
+            alloc_event = self.event_table[alloc_eid]
+            if free_event.alloc_size == alloc_event.alloc_size:
+                # If these match, just append the free event - we're good!
+                result.append(free_event)
+            else:
+                # Append the pseudo-event - a free event representing what
+                # would have occurred if the memory had been freed at the cutoff time
+                free_event = copy.copy(free_event)
+                free_event.alloc_size = alloc_event.alloc_size
+                free_event.alloc_addr = alloc_event.alloc_addr
+                result.append(free_event)
+
+        return result
+
 @dataclass
 class ObjectTree:
     type_name: str
