@@ -380,6 +380,8 @@ class OutputRecord:
             )
         )
 
+    def get_events(self, ii: typing.Iterable[int]) -> list[OutputEvent]:
+        return [self.event_table[i] for i in ii]
 
     def get_type_name(self, type_i: type_index_t) -> str:
         """Get the name of the given type, by the type index"""
@@ -424,7 +426,6 @@ class OutputRecord:
     def get_base_offsets(self, type_i: type_index_t) -> list[size_t]:
         """Get the list of base class offsets for a given type, by the type index"""
         return self.type_data_table.base_offsets[self.get_base_slice(type_i)]
-
 
     def get_type_data_at(self, i: type_index_t) -> TypeData:
         return TypeData(
