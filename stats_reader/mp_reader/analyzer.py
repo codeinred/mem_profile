@@ -655,6 +655,9 @@ def _make_filter(filts: list[str], filter_mode: FilterType):
 def type_stats(
     input_file: Annotated[Path, typer.Argument(help="Path to malloc_stats.json file")],
     types: Annotated[list[str], typer.Option(help="Filter for types")],
+    count: Annotated[
+        int | None, typer.Option(help="Limit output to top N entries")
+    ] = None,
     filter_mode: Annotated[
         FilterType,
         typer.Option(
@@ -706,7 +709,9 @@ def type_stats(
     # Apply the filter to the sorted types
     sorted_types = [s for s in sorted_types if type_filter(record.get_type_name(s[-1]))]
 
-    for _, _, _, tid in sorted_types:
+    n_omitted_matches = len(sorted_types) - count
+
+    for _, _, _, tid in sorted_types[:count]:
         get_stats_for_type(
             tid,
             record,
@@ -715,6 +720,11 @@ def type_stats(
             show_offsets=show_offsets,
             clean_members=clean_members,
         )
+
+    if n_omitted_matches > 0:
+        print()
+        match_tag = 'match' if n_omitted_matches == 1 else 'matches'
+        print(f"  {Grey}{n_omitted_matches} {match_tag} were omitted (--count={count})")
 
 
 def _counts_by_type(
