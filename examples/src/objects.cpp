@@ -7,14 +7,14 @@ using bytes = std::vector<std::byte>;
 
 using string_map = std::map<std::string, std::string>;
 
-struct array3 {
+struct my_object {
     bytes      a;
     bytes      b;
-    string_map map;
+    string_map m;
 };
 
 int main() {
-    array3 m{bytes(10),
+    my_object m{bytes(10),
                 bytes(100),
                 {
                     {"key1", "Hello, world"},
