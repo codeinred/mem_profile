@@ -654,7 +654,7 @@ def _make_filter(filts: list[str], filter_mode: FilterType):
 
 def type_stats(
     input_file: Annotated[Path, typer.Argument(help="Path to malloc_stats.json file")],
-    types: Annotated[list[str], typer.Option(help="Filter for types")],
+    types: Annotated[list[str], typer.Option('--type', help="Filter for types")],
     count: Annotated[
         int | None, typer.Option(help="Limit output to top N entries")
     ] = None,
