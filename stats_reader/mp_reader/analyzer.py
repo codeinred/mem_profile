@@ -580,6 +580,7 @@ def get_stats_for_type(
 def do_load(
     input_file: Path,
     strip_from_strings: list[str] | None,
+    replace_strings: list[tuple[str, str]] | None = None,
 ) -> OutputRecord:
     from .loader import load_from_file
 
@@ -592,6 +593,10 @@ def do_load(
             for i in range(len(record.strtab)):
                 record.strtab[i] = record.strtab[i].replace(s, "")
 
+    if replace_strings:
+        for find, repl in replace_strings:
+            for i in range(len(record.strtab)):
+                record.strtab[i] = record.strtab[i].replace(find, repl)
     return record
 
 
@@ -683,9 +688,25 @@ def type_stats(
             help="Strip a substring from all the strings in the strtab. Useful for cleaning up output"
         ),
     ] = None,
+    replace: Annotated[
+        list[str] | None,
+        typer.Option(help="String to find (for replacement)"),
+    ] = None,
+    replace_with: Annotated[
+        list[str] | None,
+        typer.Option(help="String to replace with (defaults to ...)")
+    ] = None,
     filter_peak: Annotated[bool, typer.Option(help="Filter for peak usage")] = False,
 ):
-    record = do_load(input_file, strip_from_strings)
+    replace_strings: None | list[tuple[str, str]] = None
+    if replace is not None:
+        if replace_with is None:
+            replace_with = ['...' for _ in replace]
+
+        replace_strings = list(
+            zip(replace, replace_with)
+        )
+    record = do_load(input_file, strip_from_strings, replace_strings)
 
     events: list[OutputEvent] = (
         record.peak_free_events() if filter_peak else record.free_events()
