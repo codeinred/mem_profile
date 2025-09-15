@@ -25,6 +25,7 @@ from itertools import starmap
 from collections import defaultdict
 import typer
 from dataclasses import dataclass, field
+from enum import Enum
 
 
 def _loc_lines(loc: Loc) -> list[str | Styled]:
@@ -213,6 +214,16 @@ def print_objects(record: OutputRecord) -> None:
         pprint.pprint(obj, compact=True)
 
 
+@dataclass
+class _counts:
+    obj_ids: set[int] = field(default_factory=set)
+    alloc_count: int = 0
+    byte_count: int = 0
+
+    def num_objects(self) -> int:
+        return len(self.obj_ids)
+
+
 def _print_alloc_stat(
     tag: str,
     count: int,
@@ -274,6 +285,7 @@ def get_stats_for_type(
     tid: int,
     record: OutputRecord,
     events: list[OutputEvent],
+    counts: dict[int, _counts],
     show_offsets: bool = False,
     clean_members: bool = False,
 ):
@@ -294,6 +306,8 @@ def get_stats_for_type(
 
     alloc_count = len(events)
     alloc_bytes = sum(e.alloc_size for e in events)
+    object_count = counts[tid].num_objects()
+    object_tag = "object" if object_count == 1 else "objects"
 
     direct_alloc_count = 0
     direct_alloc_bytes = 0
@@ -444,11 +458,12 @@ def get_stats_for_type(
     last_print_was_stats = False
     num_cleaned_fields_printed = False
 
+    print()
     print(
         f"{Grey}// Totals for {type_data.name}{RE} {BB_Y}sizeof{RE}{Grey}={type_data.size:,} bytes{RE}"
     )
     print(
-        f"{Grey}// └── {BB_G}{total_allocated_bytes:,} bytes{RE}{Grey} across {BB_B}{total_alloc_count} allocs{RE}"
+        f"{Grey}// └── {BB_G}{total_allocated_bytes:,} bytes{RE}{Grey} across {BB_B}{total_alloc_count} allocs{RE}{Grey} and {RE}{BOLD}{object_count:,} {object_tag}{RE}"
     )
     print(f"{bb_yellow('struct')} {bb_cyan(type_data.name)}")
     if num_cleaned_bases != 0:
@@ -562,13 +577,210 @@ def get_stats_for_type(
     print()
 
 
-@dataclass
-class _counts:
-    obj_ids: set[int] = field(default_factory=set)
-    byte_count: int = 0
+def do_load(
+    input_file: Path,
+    strip_from_strings: list[str] | None,
+) -> OutputRecord:
+    from .loader import load_from_file
 
-    def num_objects(self) -> int:
-        return len(self.obj_ids)
+    record: OutputRecord = load_from_file(input_file)
+
+    record.clean()
+
+    if strip_from_strings:
+        for s in strip_from_strings:
+            for i in range(len(record.strtab)):
+                record.strtab[i] = record.strtab[i].replace(s, "")
+
+    return record
+
+
+class FilterType(Enum):
+    """Specifies how to filter typenames by string"""
+
+    EXACT = 'EXACT'
+    CONTAINS = 'CONTAINS'
+    REGEX = 'REGEX'
+    REGEX_FULL = 'REGEX_FULL'
+
+
+def _make_filter(filts: list[str], filter_mode: FilterType):
+    def _filter_exact(filt: str):
+        def f(x: str) -> bool:
+            return x == filt
+
+        return f
+
+    def _filter_contains(filt: str):
+        def f(x: str) -> bool:
+            return filt in x
+
+        return f
+
+    def _filter_regex(filt: str):
+        patt = re.compile(filt)
+
+        def f(x: str) -> bool:
+            return bool(patt.search(x))
+
+        return f
+
+    def _filter_regex_full(filt: str):
+        patt = re.compile(filt)
+
+        def f(x: str) -> bool:
+            return bool(patt.fullmatch(x))
+
+        return f
+
+    make_filter: typing.Callable[[str], typing.Callable[[str], bool]]
+    match filter_mode:
+        case FilterType.EXACT:
+            make_filter = _filter_exact
+        case FilterType.CONTAINS:
+            make_filter = _filter_contains
+        case FilterType.REGEX:
+            make_filter = _filter_regex
+        case FilterType.REGEX_FULL:
+            make_filter = _filter_regex_full
+
+    funcs: list[typing.Callable[[str], bool]] = list(map(make_filter, filts))
+
+    def filt(x: str) -> bool:
+        return any(f(x) for f in funcs)
+
+    return filt
+
+
+def type_stats(
+    input_file: Annotated[Path, typer.Argument(help="Path to malloc_stats.json file")],
+    types: Annotated[list[str], typer.Option(help="Filter for types")],
+    filter_mode: Annotated[
+        FilterType,
+        typer.Option(
+            help="Mode for filtering (EXACT, CONTAINS, or REGEX). Specifies how to interpret the filter."
+        ),
+    ] = FilterType.CONTAINS,
+    min_bytes: Annotated[
+        int | None,
+        typer.Option(help="Only show entries that take at least this many bytes"),
+    ] = None,
+    show_offsets: Annotated[
+        bool,
+        typer.Option(
+            help="Show offsets when printing allocations in members and bases"
+        ),
+    ] = False,
+    clean_members: Annotated[
+        bool, typer.Option(help="Clean up fields that don't result in allocations")
+    ] = False,
+    strip_from_strings: Annotated[
+        list[str] | None,
+        typer.Option(
+            help="Strip a substring from all the strings in the strtab. Useful for cleaning up output"
+        ),
+    ] = None,
+    filter_peak: Annotated[bool, typer.Option(help="Filter for peak usage")] = False,
+):
+    record = do_load(input_file, strip_from_strings)
+
+    events: list[OutputEvent] = (
+        record.peak_free_events() if filter_peak else record.free_events()
+    )
+
+    # Dictionary to track total bytes allocated by type_data index
+    counts: dict[int, _counts]
+    untyped_allocations: int
+    untyped_allocations_count: int = 0
+
+    counts, untyped_allocations, untyped_allocations_count = _counts_by_type(
+        events, False
+    )
+    sorted_types = _sorted_type_table(record, counts, min_bytes)
+
+    if len(types) == 0:
+        raise Exception("Error: type_stats expected at least one type filter")
+
+    type_filter = _make_filter(types, filter_mode)
+
+    # Apply the filter to the sorted types
+    sorted_types = [s for s in sorted_types if type_filter(record.get_type_name(s[-1]))]
+
+    for _, _, _, tid in sorted_types:
+        get_stats_for_type(
+            tid,
+            record,
+            events,
+            counts=counts,
+            show_offsets=show_offsets,
+            clean_members=clean_members,
+        )
+
+
+def _counts_by_type(
+    events: list[OutputEvent], include_self: bool = False
+) -> tuple[dict[int, _counts], int, int]:
+    """Assumes that by this point we only have Free events."""
+
+    # Dictionary to track total bytes allocated by type_data index
+    counts: dict[int, _counts] = defaultdict(_counts)
+
+    untyped_allocations = 0
+    untyped_allocations_count = 0
+    for event in events:
+        object_info = event.object_info
+        if object_info is not None:
+            # Process typed allocations from object info
+            # Each type gets attributed the full event.alloc_size
+
+            for tid, object_id in zip(object_info.type_data, object_info.object_id):
+                counts[tid].obj_ids.add(object_id)
+
+            # Constructing a set from the types in the trace ensures that
+            # we don't double-count allocations for recursive data structures
+            for tid in set(object_info.type_data):
+                _count = counts[tid]
+                _count.byte_count += event.alloc_size
+                _count.alloc_count += 1
+        else:
+            # Untyped allocation
+            untyped_allocations_count += 1
+            untyped_allocations += event.alloc_size
+
+    if include_self:
+        for k, e in counts.items():
+            e.byte_count += record.get_type_size(k) * e.num_objects()
+
+    return counts, untyped_allocations_count, untyped_allocations
+
+
+def _sorted_type_table(
+    record: OutputRecord, counts: dict[int, _counts], min_bytes: int | None = None
+) -> list[tuple[str, int, int, int]]:
+    """
+    Get a table of sorted types.
+
+    Entries are:
+
+    - type name
+    - byte count
+    - num objects
+    - type index
+    """
+    # Convert to (type_name, total_bytes) and sort by allocation size (descending)
+    if min_bytes is None:
+        type_items = [
+            (record.get_type_name(idx), e.byte_count, e.num_objects(), idx)
+            for idx, e in counts.items()
+        ]
+    else:
+        type_items = [
+            (record.get_type_name(idx), e.byte_count, e.num_objects(), idx)
+            for idx, e in counts.items()
+            if e.byte_count >= min_bytes
+        ]
+
+    return sorted(type_items, key=lambda x: x[1], reverse=True)
 
 
 def stats(
@@ -618,71 +830,24 @@ def stats(
     Analyzes all FREE events in the memory profiler data and shows which types
     are responsible for the most memory allocations.
     """
-    from .loader import load_from_file
 
-    record: OutputRecord = load_from_file(input_file)
+    record = do_load(input_file, strip_from_strings)
 
-    record.clean()
-
-    if strip_from_strings:
-        for s in strip_from_strings:
-            for i in range(len(record.strtab)):
-                record.strtab[i] = record.strtab[i].replace(s, "")
+    events: list[OutputEvent] = (
+        record.peak_free_events() if filter_peak else record.free_events()
+    )
 
     # Dictionary to track total bytes allocated by type_data index
-    counts: dict[int, _counts] = defaultdict(_counts)
+    counts: dict[int, _counts]
+    untyped_allocations: int
+    untyped_allocations_count: int = 0
 
-    untyped_allocations = 0
-    untyped_allocations_count = 0
-
-    events = record.event_table
-
-    if filter_peak:
-        events = record.pseudo_frees_at_time(record.peak_usage()[0])
-
-    # Process all FREE events
-    for event in events:
-        if event.type != EventType.FREE:
-            continue
-
-        object_info = event.object_info
-        if object_info is not None:
-            # Process typed allocations from object info
-            # Each type gets attributed the full event.alloc_size
-
-            for tid, object_id in zip(object_info.type_data, object_info.object_id):
-                counts[tid].obj_ids.add(object_id)
-
-            # Constructing a set from the types in the trace ensures that
-            # we don't double-count allocations for recursive data structures
-            for tid in set(object_info.type_data):
-                counts[tid].byte_count += event.alloc_size
-
-        else:
-            # Untyped allocation
-            untyped_allocations_count += 1
-            untyped_allocations += event.alloc_size
-
-    if include_self:
-        for k, e in counts.items():
-            e.byte_count += record.get_type_size(k) * e.num_objects()
+    counts, untyped_allocations, untyped_allocations_count = _counts_by_type(
+        events, include_self
+    )
+    sorted_types = _sorted_type_table(record, counts, min_bytes)
 
     total_object_count = sum(len(e.obj_ids) for e in counts.values())
-
-    # Convert to (type_name, total_bytes) and sort by allocation size (descending)
-    if min_bytes is None:
-        type_items = [
-            (record.get_type_name(idx), e.byte_count, e.num_objects(), idx)
-            for idx, e in counts.items()
-        ]
-    else:
-        type_items = [
-            (record.get_type_name(idx), e.byte_count, e.num_objects(), idx)
-            for idx, e in counts.items()
-            if e.byte_count >= min_bytes
-        ]
-
-    sorted_types = sorted(type_items, key=lambda x: x[1], reverse=True)
 
     # Apply count limit if specified
     if count is not None:
@@ -697,8 +862,8 @@ def stats(
             type_name, object_count, total_bytes, max_tag_len=max_typename_len
         )
 
-    if len(type_items) < len(counts):
-        num_filtered = len(counts) - len(type_items)
+    if len(sorted_types) < len(counts):
+        num_filtered = len(counts) - len(sorted_types)
         print(grey(f"                                 ..."))
         print(grey(f"{num_filtered:>19} entries filtered"))
         print()
@@ -757,6 +922,7 @@ def stats(
                 tid,
                 record,
                 events,
+                counts=counts,
                 show_offsets=show_offsets,
                 clean_members=clean_members,
             )
