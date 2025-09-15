@@ -273,19 +273,14 @@ class ChildAllocStats:
 def get_stats_for_type(
     tid: int,
     record: OutputRecord,
-    select_events: typing.Iterable[int] | None = None,
+    events: list[OutputEvent],
     show_offsets: bool = False,
     clean_members: bool = False,
 ):
-    if select_events is None:
-        select_events = range(len(record.event_table))
-
-    # events: list[OutputEvent] = [record.event_table[e] for e in select_events]
-
     # Get all free events that contain the given type
-    events: list[OutputEvent] = [
+    events = [
         e
-        for e in map(record.event_table.__getitem__, select_events)
+        for e in events
         if (
             e.type == EventType.FREE
             and e.object_info is not None
@@ -311,6 +306,8 @@ def get_stats_for_type(
     for e in events:
         # if 't_lookup' in record.get_type_name(tid):
         #     print_event_trace(record, e.id, show_bin_addr=True, skip_inline=False)
+        if e.object_info is None:
+            continue
         object_info = e.object_info.reverse()
 
         # Find the index of the type within the object.
@@ -416,8 +413,8 @@ def get_stats_for_type(
         results = results_tmp
         new_base_count = 0
         new_field_count = 0
-        for e in results:
-            match e:
+        for result in results:
+            match result:
                 case Field():
                     new_field_count += 1
                 case Base():
@@ -429,15 +426,14 @@ def get_stats_for_type(
 
     max_field_type_len = 0
     max_base_type_len = 0
-    for e in results:
-        match e:
+    for result in results:
+        match result:
             case Field():
-                max_field_type_len = max(len(e.type_name), max_field_type_len)
+                max_field_type_len = max(len(result.type_name), max_field_type_len)
             case Base():
-                max_base_type_len = max(len(e.type_name), max_base_type_len)
+                max_base_type_len = max(len(result.type_name), max_base_type_len)
             case _:
                 continue
-
 
     base_prefix = ": "
     needs_open_bracket = True
@@ -448,53 +444,55 @@ def get_stats_for_type(
     last_print_was_stats = False
     num_cleaned_fields_printed = False
 
-    print(f"{Grey}// Totals for {type_data.name}{RE} {BB_Y}sizeof{RE}{Grey}={type_data.size:,} bytes{RE}")
+    print(
+        f"{Grey}// Totals for {type_data.name}{RE} {BB_Y}sizeof{RE}{Grey}={type_data.size:,} bytes{RE}"
+    )
     print(
         f"{Grey}// └── {BB_G}{total_allocated_bytes:,} bytes{RE}{Grey} across {BB_B}{total_alloc_count} allocs{RE}"
     )
     print(f"{bb_yellow('struct')} {bb_cyan(type_data.name)}")
     if num_cleaned_bases != 0:
         print(f"  {Grey}// ({num_cleaned_bases} non-owning bases cleaned){RE}")
-    for e in results:
-        match e:
+    for result in results:
+        match result:
             case Base():
-                last_offset = e.offset
-                last_child_size = e.size
+                last_offset = result.offset
+                last_child_size = result.size
                 if needs_newline:
                     needs_newline = False
                     print()
-                start, end = e.offset, e.offset + e.size
+                start, end = result.offset, result.offset + result.size
                 _range = f"bytes {start:<4}..{end:<4} in object"
                 last_child_str = (
-                    f"  {base_prefix}{bb_cyan(e.type_name):<{max_base_type_len}}"
+                    f"  {base_prefix}{bb_cyan(result.type_name):<{max_base_type_len}}"
                 )
                 print(last_child_str, end="")
                 last_print_was_stats = False
                 needs_newline = True
                 base_prefix = ", "
             case Field():
-                last_offset = e.offset
-                last_child_size = e.size
+                last_offset = result.offset
+                last_child_size = result.size
                 if needs_open_bracket:
                     if needs_newline:
                         print(" {")
                     else:
                         print("{")
                     if num_cleaned_fields > 0:
-                        print(f"  {Grey}// ({num_cleaned_fields} non-owning fields cleaned){RE}")
+                        print(
+                            f"  {Grey}// ({num_cleaned_fields} non-owning fields cleaned){RE}"
+                        )
                         num_cleaned_fields_printed = True
                     needs_open_bracket = False
                     needs_newline = False
                 if needs_newline:
                     print()
                     needs_newline = False
-                start, end = e.offset, e.offset + e.size
-                tag = e.field_name
+                start, end = result.offset, result.offset + result.size
+                tag = result.field_name
                 if tag == "":
                     tag = "(unnamed)"
-                last_child_str = (
-                    f"  {bb_cyan(e.type_name):<{max_field_type_len}} {bb_green(tag)};"
-                )
+                last_child_str = f"  {bb_cyan(result.type_name):<{max_field_type_len}} {bb_green(tag)};"
                 print(last_child_str, end="")
                 last_print_was_stats = False
                 needs_newline = True
@@ -503,24 +501,24 @@ def get_stats_for_type(
                 if last_print_was_stats:
                     print(" " * len_without_color(last_child_str), end="")
                 inner_offset_str = ""
-                if e.size < last_child_size:
+                if result.size < last_child_size:
                     # We're inside a c-style array or we were allocated in a buffer...
-                    inner_offset = e.offset - last_offset
-                    if inner_offset % e.size == 0:
-                        array_index = inner_offset // e.size
+                    inner_offset = result.offset - last_offset
+                    if inner_offset % result.size == 0:
+                        array_index = inner_offset // result.size
                         inner_offset_str = f"[{array_index}] "
                     else:
                         inner_offset_str = f"+{inner_offset} "
-                alloc_bytes = f"{e.alloc_count.alloc_bytes:,}" + " bytes"
-                alloc_count = f"{e.alloc_count.alloc_count:,}" + " allocs"
-                start, end = e.offset, e.offset + e.size
+                alloc_bytes_s = f"{result.alloc_count.alloc_bytes:,}" + " bytes"
+                alloc_count_s = f"{result.alloc_count.alloc_count:,}" + " allocs"
+                start, end = result.offset, result.offset + result.size
                 if show_offsets:
                     _range = f"{start}..{end:>3}"
                     _range = f"{bb_yellow(_range):>8}  "
                 else:
                     _range = ""
                 print(
-                    f" {Grey}// {inner_offset_str}{_range}{RE}{bb_green(alloc_bytes)}{Grey} across {RE}{bb_blue(alloc_count)}{Grey} : {e.type_name}{RE}"
+                    f" {Grey}// {inner_offset_str}{_range}{RE}{bb_green(alloc_bytes_s)}{Grey} across {RE}{bb_blue(alloc_count_s)}{Grey} : {result.type_name}{RE}"
                 )
                 last_print_was_stats = True
                 needs_newline = False
@@ -539,11 +537,11 @@ def get_stats_for_type(
         print(f"  {BB_C}~{type_data.name}();{RE}")
 
         if direct_alloc_count > 0:
-            alloc_bytes = f"{direct_alloc_bytes:,} bytes"
-            alloc_count = f"{direct_alloc_count:,} allocs"
+            alloc_bytes_s = f"{direct_alloc_bytes:,} bytes"
+            alloc_count_s = f"{direct_alloc_count:,} allocs"
             print(f"  {Grey}// directly owned (or unannotated):")
             print(
-                f"  {Grey}// └── {BB_G}{alloc_bytes}{RE}{Grey} across {BB_B}{alloc_count}{RE}"
+                f"  {Grey}// └── {BB_G}{alloc_bytes_s}{RE}{Grey} across {BB_B}{alloc_count_s}{RE}"
             )
         if len(indirect_child_data) > 0:
             print(f"  {Grey}// children on heap:")
@@ -552,12 +550,12 @@ def get_stats_for_type(
                 key=lambda ent: record.get_type_name(ent[0]),
             )
             last_i = len(items) - 1
-            for i, (tid, alloc_count) in enumerate(items):
-                alloc_bytes = f"{alloc_count.alloc_bytes:,}" + " bytes"
-                alloc_count = f"{alloc_count.alloc_count:,}" + " allocs"
+            for i, (tid, item_stats) in enumerate(items):
+                alloc_bytes_s = f"{item_stats.alloc_bytes:,}" + " bytes"
+                alloc_count_s = f"{item_stats.alloc_count:,}" + " allocs"
                 prefix = "├── " if i < last_i else "└── "
                 print(
-                    f"  {Grey}// {BOLD}{prefix}{bb_green(alloc_bytes)}{Grey} across {bb_blue(alloc_count)}{Grey} : {record.get_type_name(tid)}"
+                    f"  {Grey}// {BOLD}{prefix}{bb_green(alloc_bytes_s)}{Grey} across {bb_blue(alloc_count_s)}{Grey} : {record.get_type_name(tid)}"
                 )
 
     print("};")
@@ -609,6 +607,10 @@ def stats(
             help="Strip a substring from all the strings in the strtab. Useful for cleaning up output"
         ),
     ] = None,
+    show_still_reachable: Annotated[
+        bool, typer.Option(help="Show still-reachable allocations")
+    ] = False,
+    filter_peak: Annotated[bool, typer.Option(help="Filter for peak usage")] = False,
 ) -> None:
     """
     Print allocation statistics by type, sorted by total bytes allocated.
@@ -633,8 +635,13 @@ def stats(
     untyped_allocations = 0
     untyped_allocations_count = 0
 
+    events = record.event_table
+
+    if filter_peak:
+        events = record.pseudo_frees_at_time(record.peak_usage()[0])
+
     # Process all FREE events
-    for event in record.event_table:
+    for event in events:
         if event.type != EventType.FREE:
             continue
 
@@ -709,16 +716,47 @@ def stats(
 
     # Print totals - sum of all FREE event alloc_sizes
     total_all_frees = sum(
-        event.alloc_size for event in record.event_table if event.type == EventType.FREE
+        event.alloc_size for event in events if event.type == EventType.FREE
     )
 
     print()
     _print_alloc_stat("<total>", total_object_count, total_all_frees, tag_style=BB_W)
+
+    if show_still_reachable:
+        reachable_allocs, reachable_bytes = record.still_reachable()
+        if reachable_bytes > 0:
+            print()
+            _print_alloc_stat(
+                "<still reachable>",
+                reachable_allocs,
+                reachable_bytes,
+                tag_style=Grey,
+                count_tag="allocs",
+                count_tag_singular="alloc",
+            )
+            print()
+            print(
+                (
+                    f"{Grey}"
+                    "  Note: reachable allocations may not represent a memory leak.\n"
+                    "  They may instead come from global variables that had not yet\n"
+                    "  been destroyed at the time the profiler exited, or that occured\n"
+                    "  In order to load the program.\n"
+                    "  \n"
+                    "  To properly diagnose memory leaks, tools such as valgrind\n"
+                    "  should be preferred.\n"
+                    f"{RE}"
+                )
+            )
 
     if top_n_layouts > 0:
         print()
         entries = sorted_types[:top_n_layouts]
         for _, _, _, tid in entries:
             get_stats_for_type(
-                tid, record, show_offsets=show_offsets, clean_members=clean_members
+                tid,
+                record,
+                events,
+                show_offsets=show_offsets,
+                clean_members=clean_members,
             )
