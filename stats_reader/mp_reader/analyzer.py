@@ -709,9 +709,13 @@ def type_stats(
     # Apply the filter to the sorted types
     sorted_types = [s for s in sorted_types if type_filter(record.get_type_name(s[-1]))]
 
-    n_omitted_matches = len(sorted_types) - count
+    if count is not None:
+        n_omitted_matches = len(sorted_types) - count
+        sorted_types = sorted_types[:count]
+    else:
+        n_omitted_matches = 0
 
-    for _, _, _, tid in sorted_types[:count]:
+    for _, _, _, tid in sorted_types:
         get_stats_for_type(
             tid,
             record,
