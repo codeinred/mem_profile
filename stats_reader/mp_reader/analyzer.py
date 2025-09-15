@@ -307,7 +307,7 @@ def get_stats_for_type(
     alloc_count = len(events)
     alloc_bytes = sum(e.alloc_size for e in events)
     object_count = counts[tid].num_objects()
-    object_tag = "object" if object_count == 1 else "objects"
+    object_tag = "instance" if object_count == 1 else "instances"
 
     direct_alloc_count = 0
     direct_alloc_bytes = 0
