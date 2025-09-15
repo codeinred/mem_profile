@@ -616,6 +616,15 @@ class OutputRecord:
 
         return int(eid), int(alloc_counts[eid]), int(byte_counts[eid])
 
+    def free_events(self) -> list[OutputEvent]:
+        return [e for e in self.event_table if e.type == EventType.FREE]
+
+    def peak_free_events(self) -> list[OutputEvent]:
+        """
+        Return free events that correspond to allocations available at
+        peak usage
+        """
+        return self.pseudo_frees_at_time(self.peak_usage()[0])
 
 @dataclass
 class ObjectTree:
