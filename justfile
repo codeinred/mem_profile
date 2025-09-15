@@ -121,6 +121,7 @@ gen_test_files: build_example
     @just _gen_test_file simple_nested_objects
     @just _gen_test_file single_alloc
     @just _gen_test_file string
+    @just _gen_test_file objects
     @just _gen_test_file objects_in_array
     @just _gen_test_file objects_in_vector
     @just _gen_test_file objects_in_variant
