@@ -127,6 +127,7 @@ gen_test_files: build_example
     @just _gen_test_file objects_in_variant
     @just _gen_test_file objects_in_union
     @just _gen_test_file objects_in_lambda
+    @just _gen_test_file objects_beman_inplace
     @just _gen_test_file objects_in_svector
     @just _gen_test_file objects_in_svector_martinus
     @just _gen_test_file tuplet_demo
