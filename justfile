@@ -71,19 +71,13 @@ build_test_file test_file: build
         -Xclang=mp_instrument_dtors \
         -Og -g \
         -o build/test_files/{{trim_end_match(test_file, ".cpp")}} \
-        test_files/{{test_file}}
+        etc/test_cpp_files/{{test_file}}
 
 ast_dump *args:
     {{clang_cxx}} -Xclang=-ast-dump -c {{args}}
 
 clang-tidy *args:
     {{clang_tidy}} {{args}}
-
-mp_reader *args:
-    env \
-        "PYTHONPATH={{cwd}}/stats_reader" \
-        uv run --project "{{cwd}}/stats_reader" \
-        python -m mp_reader {{args}}
 
 build_example: install
     cmake -S examples \
@@ -112,10 +106,10 @@ mp_run *args:
 
 _gen_test_file prog:
     @just {{dsymutil_tgt}} examples/build/{{prog}}
-    @just mp_run MEM_PROFILE_OUT=stats_reader/test_files/{{os()}}/{{prog}}.json examples/build/{{prog}}
+    @just mp_run MEM_PROFILE_OUT=etc/test_files/{{os()}}/{{prog}}.json examples/build/{{prog}}
 
 gen_test_files: build_example
-    mkdir -p stats_reader/test_files/{{os()}}
+    mkdir -p etc/test_files/{{os()}}
     @just {{dsymutil_tgt}} build/libmp_runtime.{{lib_ext}}
     @just _gen_test_file simple_alloc
     @just _gen_test_file simple_nested_objects
@@ -134,9 +128,6 @@ gen_test_files: build_example
 
 run_example example: build_example
     examples/build/{{example}}
-
-analyze_stats input_file:
-    uv run --project stats_reader print-objects {{input_file}}
 
 clean:
     rm -rf build install examples/build
