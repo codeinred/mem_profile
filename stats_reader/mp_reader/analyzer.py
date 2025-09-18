@@ -28,6 +28,45 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 
+def _plc(n: int, noun: str, padding: int | None = None) -> str:
+    """Display a correctly pluralized quantity, adding a space at the end when the 's' is stripped.
+
+    Examples:
+    - _plc(10, "bytes") -> "10 bytes"
+    - _plc(1, "bytes") -> "1 byte "
+    """
+    if n == 1:
+        s = f"1 {noun[:-1]} "
+    else:
+        s = f"{n:,} {noun}"
+    if padding is not None:
+        return f"{s:>{padding}}"
+    else:
+        return s
+
+
+def _pl(
+    n: int, noun: str, padding: int | None = None, singular: str | None = None
+) -> str:
+    """Display a correctly pluralized quantity
+
+    Examples:
+    - _pl(10, "bytes") -> "10 bytes"
+    - _pl(1, "bytes") -> "1 byte"
+    """
+    if n == 1:
+        if singular is None:
+            s = f"1 {noun[:-1]}"
+        else:
+            s = f"1 {singular}"
+    else:
+        s = f"{n:,} {noun}"
+    if padding is not None:
+        return f"{s:>{padding}}"
+    else:
+        return s
+
+
 def _loc_lines(loc: Loc) -> list[str | Styled]:
     s = f"{bb_green(loc.file)}"
     if loc.col != 0:
@@ -229,7 +268,6 @@ def _print_alloc_stat(
     count: int,
     total_bytes: int,
     count_tag: str = "objects",
-    count_tag_singular: str = "object",
     max_tag_len: int | None = None,
     count_style: str = Grey,
     byte_style: str = BB_G,
@@ -240,10 +278,8 @@ def _print_alloc_stat(
             tag = tag[:max_tag_len]
             tag += "..."
 
-    if count == 1:
-        count_tag = count_tag_singular
     print(
-        f"{st(count_style, f'{count:>8,} {count_tag:8}')} {st(byte_style, f'{total_bytes:>12,} bytes')}  {st(tag_style, tag)}"
+        f"{st(count_style, _plc(count, count_tag, 16))} {st(byte_style, _plc(total_bytes, 'bytes', 18))}  {st(tag_style, tag)}"
     )
 
 
@@ -307,7 +343,6 @@ def get_stats_for_type(
     alloc_count = len(events)
     alloc_bytes = sum(e.alloc_size for e in events)
     object_count = counts[tid].num_objects()
-    object_tag = "instance" if object_count == 1 else "instances"
 
     direct_alloc_count = 0
     direct_alloc_bytes = 0
@@ -460,14 +495,14 @@ def get_stats_for_type(
 
     print()
     print(
-        f"{Grey}// Totals for {type_data.name}{RE} {BB_Y}sizeof{RE}{Grey}={type_data.size:,} bytes{RE}"
+        f"{Grey}// Totals for {type_data.name}{RE} {BB_Y}sizeof{RE}{Grey}={_pl(type_data.size, 'bytes')}{RE}"
     )
     print(
-        f"{Grey}// └── {BB_G}{total_allocated_bytes:,} bytes{RE}{Grey} across {BB_B}{total_alloc_count} allocs{RE}{Grey} and {RE}{BOLD}{object_count:,} {object_tag}{RE}"
+        f"{Grey}// └── {BB_G}{_pl(total_allocated_bytes, 'bytes')}{RE}{Grey} across {BB_B}{_pl(total_alloc_count, 'allocs')}{RE}{Grey} and {RE}{BOLD}{_pl(object_count, 'instances')}{RE}"
     )
     print(f"{bb_yellow('struct')} {bb_cyan(type_data.name)}")
     if num_cleaned_bases != 0:
-        print(f"  {Grey}// ({num_cleaned_bases} non-owning bases cleaned){RE}")
+        print(f"  {Grey}// ({_pl(num_cleaned_bases, 'non-owning bases')} cleaned){RE}")
     for result in results:
         match result:
             case Base():
@@ -495,7 +530,7 @@ def get_stats_for_type(
                         print("{")
                     if num_cleaned_fields > 0:
                         print(
-                            f"  {Grey}// ({num_cleaned_fields} non-owning fields cleaned){RE}"
+                            f"  {Grey}// ({_pl(num_cleaned_fields, 'non-owning fields')} cleaned){RE}"
                         )
                         num_cleaned_fields_printed = True
                     needs_open_bracket = False
@@ -524,8 +559,8 @@ def get_stats_for_type(
                         inner_offset_str = f"[{array_index}] "
                     else:
                         inner_offset_str = f"+{inner_offset} "
-                alloc_bytes_s = f"{result.alloc_count.alloc_bytes:,}" + " bytes"
-                alloc_count_s = f"{result.alloc_count.alloc_count:,}" + " allocs"
+                alloc_bytes_s = _pl(result.alloc_count.alloc_bytes, "bytes")
+                alloc_count_s = _pl(result.alloc_count.alloc_count, "allocs")
                 start, end = result.offset, result.offset + result.size
                 if show_offsets:
                     _range = f"{start}..{end:>3}"
@@ -546,14 +581,16 @@ def get_stats_for_type(
     has_other_allocs = direct_alloc_count > 0 or len(indirect_child_data) > 0
 
     if num_cleaned_fields > 0 and not num_cleaned_fields_printed:
-        print(f"  {Grey}// ({num_cleaned_fields} non-owning fields cleaned){RE}")
+        print(
+            f"  {Grey}// ({_pl(num_cleaned_fields, "non-owning fields")} cleaned){RE}"
+        )
     if has_other_allocs:
         print()
         print(f"  {BB_C}~{type_data.name}();{RE}")
 
         if direct_alloc_count > 0:
-            alloc_bytes_s = f"{direct_alloc_bytes:,} bytes"
-            alloc_count_s = f"{direct_alloc_count:,} allocs"
+            alloc_bytes_s = _pl(direct_alloc_bytes, "bytes")
+            alloc_count_s = _pl(direct_alloc_count, "allocs")
             print(f"  {Grey}// directly owned (or unannotated):")
             print(
                 f"  {Grey}// └── {BB_G}{alloc_bytes_s}{RE}{Grey} across {BB_B}{alloc_count_s}{RE}"
@@ -566,8 +603,8 @@ def get_stats_for_type(
             )
             last_i = len(items) - 1
             for i, (tid, item_stats) in enumerate(items):
-                alloc_bytes_s = f"{item_stats.alloc_bytes:,}" + " bytes"
-                alloc_count_s = f"{item_stats.alloc_count:,}" + " allocs"
+                alloc_bytes_s = _pl(item_stats.alloc_bytes, "bytes")
+                alloc_count_s = _pl(item_stats.alloc_count, "allocs")
                 prefix = "├── " if i < last_i else "└── "
                 print(
                     f"  {Grey}// {BOLD}{prefix}{bb_green(alloc_bytes_s)}{Grey} across {bb_blue(alloc_count_s)}{Grey} : {record.get_type_name(tid)}"
@@ -601,12 +638,12 @@ def do_load(
 
 
 class FilterType(Enum):
-    """Specifies how to filter typenames by string"""
+    """Specifies how to filter type names by string"""
 
-    EXACT = 'EXACT'
-    CONTAINS = 'CONTAINS'
-    REGEX = 'REGEX'
-    REGEX_FULL = 'REGEX_FULL'
+    EXACT = "EXACT"
+    CONTAINS = "CONTAINS"
+    REGEX = "REGEX"
+    REGEX_FULL = "REGEX_FULL"
 
 
 def _make_filter(filts: list[str], filter_mode: FilterType):
@@ -659,7 +696,7 @@ def _make_filter(filts: list[str], filter_mode: FilterType):
 
 def type_stats(
     input_file: Annotated[Path, typer.Argument(help="Path to malloc_stats.json file")],
-    types: Annotated[list[str], typer.Option('--type', help="Filter for types")],
+    types: Annotated[list[str], typer.Option("--type", help="Filter for types")],
     count: Annotated[
         int | None, typer.Option(help="Limit output to top N entries")
     ] = None,
@@ -693,19 +730,16 @@ def type_stats(
         typer.Option(help="String to find (for replacement)"),
     ] = None,
     replace_with: Annotated[
-        list[str] | None,
-        typer.Option(help="String to replace with (defaults to ...)")
+        list[str] | None, typer.Option(help="String to replace with (defaults to ...)")
     ] = None,
     filter_peak: Annotated[bool, typer.Option(help="Filter for peak usage")] = False,
 ):
     replace_strings: None | list[tuple[str, str]] = None
     if replace is not None:
         if replace_with is None:
-            replace_with = ['...' for _ in replace]
+            replace_with = ["..." for _ in replace]
 
-        replace_strings = list(
-            zip(replace, replace_with)
-        )
+        replace_strings = list(zip(replace, replace_with))
     record = do_load(input_file, strip_from_strings, replace_strings)
 
     events: list[OutputEvent] = (
@@ -717,9 +751,7 @@ def type_stats(
     untyped_allocations: int
     untyped_allocations_count: int = 0
 
-    counts, untyped_allocations, untyped_allocations_count = _counts_by_type(
-        events, False
-    )
+    counts, _, _ = _counts_by_type(record, events, False)
     sorted_types = _sorted_type_table(record, counts, min_bytes)
 
     if len(types) == 0:
@@ -748,12 +780,16 @@ def type_stats(
 
     if n_omitted_matches > 0:
         print()
-        match_tag = 'match' if n_omitted_matches == 1 else 'matches'
-        print(f"  {Grey}{n_omitted_matches} {match_tag} were omitted (--count={count})")
+        if n_omitted_matches != 1:
+            print(
+                f"  {Grey}{n_omitted_matches:,} matches were omitted (--count={count})"
+            )
+        else:
+            print(f"  {Grey}1 match was omitted (--count={count})")
 
 
 def _counts_by_type(
-    events: list[OutputEvent], include_self: bool = False
+    record: OutputRecord, events: list[OutputEvent], include_self: bool = False
 ) -> tuple[dict[int, _counts], int, int]:
     """Assumes that by this point we only have Free events."""
 
@@ -833,7 +869,7 @@ def stats(
     include_self: Annotated[
         bool,
         typer.Option(
-            help="Typically only dynamic allocations for an object will be reported. If --inlude-self is passed, then the size of the object itself will be included."
+            help="Typically only dynamic allocations for an object will be reported. If --include-self is passed, then the size of the object itself will be included."
         ),
     ] = False,
     top_n_layouts: Annotated[
@@ -858,6 +894,18 @@ def stats(
         bool, typer.Option(help="Show still-reachable allocations")
     ] = False,
     filter_peak: Annotated[bool, typer.Option(help="Filter for peak usage")] = False,
+    skip_stl_internal: Annotated[
+        bool,
+        typer.Option(
+            help="Remove types that represent implementation details of the standard library. Eg, std::__tree<...> would be skipped."
+        ),
+    ] = False,
+    print_num_filtered: Annotated[
+        bool,
+        typer.Option(
+            help="Print the number of filtered entries (either due to --count, --skip_stl_internal, or another filter argument)"
+        ),
+    ] = False,
 ) -> None:
     """
     Print allocation statistics by type, sorted by total bytes allocated.
@@ -878,9 +926,15 @@ def stats(
     untyped_allocations_count: int = 0
 
     counts, untyped_allocations, untyped_allocations_count = _counts_by_type(
-        events, include_self
+        record, events, include_self
     )
     sorted_types = _sorted_type_table(record, counts, min_bytes)
+
+    if skip_stl_internal:
+        stl_internal_regex = re.compile(r"(?:std::__[a-zA-Z])|(std::_[A-Z])")
+        sorted_types = list(
+            filter(lambda entry: not stl_internal_regex.search(entry[0]), sorted_types)
+        )
 
     total_object_count = sum(len(e.obj_ids) for e in counts.values())
 
@@ -897,11 +951,12 @@ def stats(
             type_name, object_count, total_bytes, max_tag_len=max_typename_len
         )
 
-    if len(sorted_types) < len(counts):
-        num_filtered = len(counts) - len(sorted_types)
-        print(grey(f"                                 ..."))
-        print(grey(f"{num_filtered:>19} entries filtered"))
-        print()
+    num_filtered = len(counts) - len(sorted_types)
+    if num_filtered > 0:
+        print(grey(f"                                ..."))
+        if print_num_filtered:
+            print(grey(f"{_pl(num_filtered, 'entries', 26, 'entry')} filtered"))
+            print()
 
     # Print untyped allocations if any
     if untyped_allocations > 0:
@@ -910,7 +965,6 @@ def stats(
             untyped_allocations_count,
             untyped_allocations,
             count_tag="allocs",
-            count_tag_singular="alloc",
             tag_style=BB_Y,
         )
 
@@ -920,7 +974,16 @@ def stats(
     )
 
     print()
-    _print_alloc_stat("<total>", total_object_count, total_all_frees, tag_style=BB_W)
+    _print_alloc_stat(
+        (
+            "<total>"
+            if num_filtered == 0
+            else f"<total> {RE}{Grey}({_pl(num_filtered, 'types')} filtered){RE}"
+        ),
+        total_object_count,
+        total_all_frees,
+        tag_style=BB_W,
+    )
 
     if show_still_reachable:
         reachable_allocs, reachable_bytes = record.still_reachable()
@@ -932,7 +995,6 @@ def stats(
                 reachable_bytes,
                 tag_style=Grey,
                 count_tag="allocs",
-                count_tag_singular="alloc",
             )
             print()
             print(
