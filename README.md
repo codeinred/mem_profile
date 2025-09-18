@@ -180,6 +180,107 @@ Profiler Manually". For example, if you've installed the plugin to
 
 Ensure that you are building with clang.
 
+# Neat Examples
+
+## Examples - lambda memory usage
+
+mem_profile can measure the memory usage of a lambda. Because lambdas have no
+named fields, all fields are unnamed.
+
+```cpp
+using bytes   = std::vector<std::byte>;
+using floats  = std::vector<float>;
+using doubles = std::vector<double>;
+
+int main() {
+    auto myLambda = [a = bytes(10),   //
+                     b = floats(100), //
+                     c = doubles(1000)]() {};
+}
+```
+
+![alt text](images/lambda-example.png)
+
+## Examples - members in c-style array
+
+mem_profile can tell you how much memory is allocated over the lifetime of a program by each member of a c-style array, in a parent type:
+
+```cpp
+using bytes = std::vector<std::byte>;
+
+struct array3 {
+    bytes elems[3];
+};
+
+int main() {
+    array3 values{
+        bytes(10),
+        bytes(100),
+        bytes(1000),
+    };
+}
+```
+
+![alt text](images/c-style-array.png)
+
+## Examples - [beman project - inplace vector](https://github.com/bemanproject/inplace_vector)
+
+mem_profile can measure allocations in members allocated inside an
+`inplace_vector` (arriving in C++26):
+
+```cpp
+using bytes = std::vector<std::byte>;
+
+int main() {
+    beman::inplace_vector<bytes, 100> v;
+    v.push_back(bytes(10));
+    v.push_back(bytes(20));
+    v.push_back(bytes());
+    v.push_back(bytes(100));
+}
+```
+
+![alt text](images/beman-inplace-vector.png)
+
+As `v[2]` didn't own any memory, it is omitted during output by `mp_reader`.
+
+## Examples - CMake
+
+Breakdown by member for `cmState`, which holds a significant portion of the
+state for a running instance of CMake. This profile was taken when running the
+configuration step.
+
+![alt text](images/cm-state-profile.png)
+
+## Examples - [FTXUI](https://github.com/ArthurSonzogni/FTXUI)
+
+When profiling `ftxui_example_html_like`, we can see that `ftxui::Screen`
+inherits from `ftxui::Image`, and almost off of the memory it owns belongs to
+`ftxui::Image`:
+
+![alt text](images/ftxui-image.png)
+
+All the instances of `ftxui::Node` are instances of `ftxui::Border`, which
+inherits from `Node`:
+
+```cpp
+// For reference, here is the charset for normal border:
+class Border : public Node {
+ public:
+  Border(Elements children,
+         BorderStyle style,
+         std::optional<Color> foreground_color = std::nullopt)
+    // ...
+};
+```
+
+![alt text](images/ftxui-border.png)
+
+Most of the memory of `ftxui::flexbox_helper::Global` is taken up by it's
+blocks:
+
+![alt text](images/ftxui-flexbox.png)
+
 # Troubleshooting
 
 It is my hope that one day, running `mem_profile` will be quick, easy, and
