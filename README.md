@@ -307,9 +307,9 @@ stacktraces).
 ```
 Allocation Statistics by Type:
 
-2,642,744 allocs       10,764 bytes  <untyped>
+    9,614 allocs    3,072,024 bytes  <untyped>
 
-       0 objects    3,423,544 bytes  <total>
+       0 objects    3,860,984 bytes  <total>
 ```
 
 If this occurs, there are a couple causes:
