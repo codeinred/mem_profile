@@ -209,7 +209,18 @@ if(LINUX)
     target_link_libraries(mp_unwind PRIVATE PkgConfig::libunwind)
 endif()
 
-
+add_executable(
+    mem_profile
+    mp/mem_profile/src/main.cpp
+)
+target_include_directories(mem_profile PRIVATE mp/mem_profile/include)
+target_compile_features(mem_profile PRIVATE cxx_std_20)
+target_link_libraries(
+    mem_profile
+    PRIVATE
+        mp::mp_core
+        fmt::fmt
+)
 
 # Set the directory for mem_profileConfig based on the Config mode search procedure
 # https://cmake.org/cmake/help/latest/command/find_package.html#config-mode-search-procedure
@@ -245,6 +256,7 @@ install(
         mp_plugin
         mp_build_with_plugin
         mp_runtime
+        mem_profile
     EXPORT  ${PROJECT_NAME}Targets
     FILE_SET HEADERS
 )
