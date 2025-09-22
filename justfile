@@ -125,6 +125,8 @@ gen_test_files: build_example
     @just _gen_test_file objects_in_svector
     @just _gen_test_file objects_in_svector_martinus
     @just _gen_test_file tuplet_demo
+    @just _gen_test_file test_std_string
+    @just _gen_test_file test_global
 
 run_example example: build_example
     examples/build/{{example}}

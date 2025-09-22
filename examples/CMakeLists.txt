@@ -22,4 +22,12 @@ foreach(file IN LISTS examples)
     target_include_directories(${target_name} PRIVATE include/)
 endforeach()
 
+file(GLOB test_files test_files/*.cpp)
+foreach(file IN LISTS test_files)
+    cmake_path(GET file STEM target_name)
+    set(target_name "test_${target_name}")
+    add_executable(${target_name} ${file})
+    target_include_directories(${target_name} PRIVATE include/)
+endforeach()
+
 target_link_libraries(tuplet_demo tuplet::tuplet)
