@@ -298,7 +298,7 @@ void mp::alloc_counter::dump_json(char const* filename) {
     using namespace mp;
 
     sv_store store;
-    auto data = make_output_record(*this, store);
+    auto     data = make_output_record(*this, store);
 
     constexpr glz::opts opts{.skip_null_members = false};
 
