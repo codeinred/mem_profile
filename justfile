@@ -44,6 +44,12 @@ clang_path:
     @echo "clang_cc={{clang_cc}}"
     @echo "clang_cxx={{clang_cxx}}"
 
+
+config-debug:
+    cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+build-debug: config-debug
+    cmake --build build
+
 config:
     cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
