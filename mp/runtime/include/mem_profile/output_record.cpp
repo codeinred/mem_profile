@@ -60,7 +60,7 @@ output_frame_table::output_frame_table(string_table&                            
 
     MP_ASSERT_EQ(pc.size(),
                  object_frames.size(),
-                 "Expected 1-to-1 relation betwween object frames and program counters");
+                 "Expected 1-to-1 relation between object frames and program counters");
 
     std::vector<Dl_info> dl_info(pc.size());
 
