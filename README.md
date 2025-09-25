@@ -368,46 +368,11 @@ env MEM_PROFILE_PRINT_NAME=1 cmake --build build
 
 ## Known Issues
 
-This is a list of known issues, which are in the process of being fixed.
+See [the issues page](https://github.com/codeinred/mem_profile/issues) for a
+full list of issues people have filed.
 
-- **Allocation Tracking in Global variables** Currently, the profiler will
-  sometimes miss memory allocated in global variables.
+Three significant issues which I am currently in the process of resolving are:
 
-  This is because allocations for a particular thread are recorded on a
-  `thread_local` object holding allocation and deallocation information for that
-  particular thread.
-
-  Once these thread-local objects are cleaned up, profiling is disabled. This
-  occurs _before_ global object cleanup occurs, and so the profiler misses some
-  allocations.
-
-- **Instrumentation of non-inline destructors:** The current implementation of
-  the plugin correctly handles inline and implicit destructors, however
-  modifications made to non-inline destructors don't actually propagate to the
-  code generation phase.
-
-  ```cpp
-  struct MyClass
-  {
-      vector<char> myData;
-
-      // This dtor is non-inline, and doesn't get annotated properly
-      ~MyClass();
-  };
-
-  MyClass::~MyClass() {
-    // ...
-  }
-  ```
-
-- **[MacOS] `std::string`'s destructor isn't instrumented.** Applications
-  compiled on MacOS use an instance of `std::string::~string()` linked in from
-  the C++ standard library. This means that `std::string` lacks annotates.
-
-  This is a minimal compiler plugin implementation that reproduces this issue
-  (it applies to non-inline functions in the general case):
-  [https://github.com/codeinred/minimal_clang_plugin](https://github.com/codeinred/minimal_clang_plugin)
-
-  [`clad`](https://github.com/vgvassilev/clad) has a workaround for this issue,
-  where clad's clang plugin
-  [inserts _itself_ prior to other AST consumers.](https://github.com/vgvassilev/clad/blob/70f5229a62652b9531caafc564898f7cd5f8d4b4/tools/ClangPlugin.cpp#L123C1-L141C6)
+- [ ] Fix Allocation Tracking for Global variables (#1)
+- [ ] Annotations to Non-Inline Destructor Calls Do Not Propagate to Codegen Phase (#2, this is a plugin issue)
+- [ ] `std::string` is not instrumented properly on MacOS (#3)
