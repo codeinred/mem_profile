@@ -373,6 +373,11 @@ full list of issues people have filed.
 
 Three significant issues which I am currently in the process of resolving are:
 
-- [ ] Fix Allocation Tracking for Global variables (#1)
-- [ ] Annotations to Non-Inline Destructor Calls Do Not Propagate to Codegen Phase (#2, this is a plugin issue)
-- [ ] `std::string` is not instrumented properly on MacOS (#3)
+- [ ] Fix Allocation Tracking for Global variables ([#1][1])
+- [ ] Annotations to Non-Inline Destructor Calls Do Not Propagate to Codegen
+      Phase ([#2][2], this is a plugin issue)
+- [ ] `std::string` is not instrumented properly on MacOS ([#3][3])
+
+[1]: https://github.com/codeinred/mem_profile/issues/1
+[2]: https://github.com/codeinred/mem_profile/issues/2
+[3]: https://github.com/codeinred/mem_profile/issues/3
