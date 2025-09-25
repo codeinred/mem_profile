@@ -1,11 +1,13 @@
-#include <mp_hook_prelude.h>
 #include <mem_profile/containers.h>
 #include <mem_profile/output_record.h>
+#include <mp_hook_prelude.h>
 
 #include <dlfcn.h>
+#include <span>
 
 namespace mp {
-template <class T> auto compute_lookup(std::vector<T> const& values) -> map<T, size_t> {
+template <class T>
+auto compute_lookup(view<T> values) -> map<T, size_t> {
     auto lookup = map<T, size_t>(values.size() * 2);
 
     for (size_t i = 0; i < values.size(); i++) {
@@ -14,7 +16,6 @@ template <class T> auto compute_lookup(std::vector<T> const& values) -> map<T, s
 
     return lookup;
 }
-
 
 output_record make_output_record(alloc_counter const& source, sv_store& store) {
     auto const& events = source.events();
@@ -25,8 +26,8 @@ output_record make_output_record(alloc_counter const& source, sv_store& store) {
 
     auto object_trace     = raw_trace.resolve_object_trace();
     auto stack_trace      = raw_trace.resolve();
-    auto pc_ids_lookup    = compute_lookup(raw_trace.frames);
-    auto type_data_lookup = compute_lookup(type_data);
+    auto pc_ids_lookup    = compute_lookup(view(raw_trace.frames));
+    auto type_data_lookup = compute_lookup(view(type_data));
 
     string_table strtab{store};
 
@@ -42,10 +43,10 @@ output_record make_output_record(alloc_counter const& source, sv_store& store) {
 }
 
 
-output_frame_table::output_frame_table(string_table&                                  strtab,
-                                       std::vector<addr_t>                            pcs,
-                                       std::vector<cpptrace::object_frame> const&     object_frames,
-                                       std::vector<cpptrace::stacktrace_frame> const& stack_frames)
+output_frame_table::output_frame_table(string_table&                    strtab,
+                                       std::vector<addr_t>              pcs,
+                                       view<cpptrace::object_frame>     object_frames,
+                                       view<cpptrace::stacktrace_frame> stack_frames)
   : pc(std::move(pcs))
   , object_path(pc.size())
   , object_address(pc.size())
@@ -109,7 +110,7 @@ output_frame_table::output_frame_table(string_table&                            
 
 
 auto compute_output_events(string_table&                            strtab,
-                           std::vector<event_record> const&         events,
+                           view<event_record>                       events,
                            map<addr_t, size_t> const&               pc_ids_lookup,
                            map<_mp_type_data const*, size_t> const& type_data_lookup)
     -> std::vector<output_event> {
@@ -147,7 +148,7 @@ auto compute_output_events(string_table&                            strtab,
 
 
 
-auto compute_event_ordering(std::vector<event_record> const& events) -> std::vector<size_t> {
+auto compute_event_ordering(view<event_record> events) -> std::vector<size_t> {
     std::vector<size_t> event_ordering(events.size());
     for (size_t i = 0; i < events.size(); i++) {
         event_ordering[i] = i;
@@ -180,8 +181,7 @@ void compute_free_sizes(std::vector<output_event>& output_events) {
     }
 }
 
-void run_sanity_check_on_frames(size_t                                         pc_count,
-                                std::vector<cpptrace::stacktrace_frame> const& frames) {
+void run_sanity_check_on_frames(size_t pc_count, view<cpptrace::stacktrace_frame> frames) {
     size_t non_inline_frame_count = 0;
     for (auto const& frame : frames) {
         non_inline_frame_count += !frame.is_inline;
@@ -191,7 +191,7 @@ void run_sanity_check_on_frames(size_t                                         p
                  pc_count,
                  "The number of non_inline frames must match the number of program counters");
 }
-bool is_events_sorted(std::vector<output_event> const& events) {
+bool is_events_sorted(view<output_event> events) {
     return std::is_sorted(
         events.begin(),
         events.end(),
@@ -200,7 +200,7 @@ bool is_events_sorted(std::vector<output_event> const& events) {
 
 
 
-std::vector<addr_t> collect_pcs(std::vector<event_record> const& events) {
+std::vector<addr_t> collect_pcs(view<event_record> events) {
     ankerl::unordered_dense::set<addr_t> pc_set;
     for (auto const& event : events) {
         pc_set.insert(event.trace.begin(), event.trace.end());
@@ -211,8 +211,7 @@ std::vector<addr_t> collect_pcs(std::vector<event_record> const& events) {
 }
 
 
-auto collect_type_data(std::vector<event_record> const& events)
-    -> std::vector<_mp_type_data const*> {
+auto collect_type_data(view<event_record> events) -> std::vector<_mp_type_data const*> {
     set<_mp_type_data const*> type_data;
     type_data.max_load_factor(0.5);
 
@@ -230,7 +229,7 @@ auto collect_type_data(std::vector<event_record> const& events)
 
 
 output_object_info::output_object_info(string_table&                            strtab,
-                                       std::vector<event_info> const&           object_trace,
+                                       view<event_info>                         object_trace,
                                        map<_mp_type_data const*, size_t> const& type_data_lookup)
   : trace_index(object_trace.size())
   , object_id(object_trace.size())
@@ -251,8 +250,7 @@ output_object_info::output_object_info(string_table&                            
 }
 
 
-output_type_data::output_type_data(string_table&                            strtab,
-                                   std::vector<_mp_type_data const*> const& type_data)
+output_type_data::output_type_data(string_table& strtab, view<_mp_type_data const*> type_data)
   : size(type_data.size())
   , type(type_data.size())
   , field_off(type_data.size() + 1)

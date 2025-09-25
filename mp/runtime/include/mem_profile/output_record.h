@@ -5,14 +5,25 @@
 #include <cpptrace/cpptrace.hpp>
 #include <fmt/format.h>
 #include <glaze/glaze.hpp>
+#include <mem_profile/allocator.h>
 #include <mem_profile/containers.h>
 #include <mem_profile/counters.h>
 #include <mp_error/error.h>
 #include <mp_types/types.h>
+#include <span>
 #include <string_view>
 
 
 namespace mp {
+template <class T>
+struct view : std::span<T const> {
+    using std::span<T const>::span;
+};
+
+template <class Range>
+view(Range const&)->view<typename Range::value_type>;
+
+
 inline std::string_view _safe_sv(char const* cstr) {
     if (cstr == nullptr) {
         return std::string_view();
@@ -98,7 +109,7 @@ struct output_object_info {
     std::vector<size_t> type_data;
 
     output_object_info(string_table&                            strtab,
-                       std::vector<event_info> const&           object_trace,
+                       view<event_info>                         object_trace,
                        map<_mp_type_data const*, size_t> const& type_data_lookup);
 };
 
@@ -165,7 +176,7 @@ struct output_type_data {
     std::vector<size_t>      base_sizes;
     std::vector<size_t>      base_offsets;
 
-    output_type_data(string_table& strtab, std::vector<_mp_type_data const*> const& type_data);
+    output_type_data(string_table& strtab, view<_mp_type_data const*> type_data);
 };
 
 
@@ -217,10 +228,10 @@ struct output_frame_table {
     size_t frame_count(size_t i) { return offsets[i + 1] - offsets[i]; }
 
     output_frame_table() = default;
-    output_frame_table(string_table&                                  strtab,
-                       std::vector<addr_t>                            pcs,
-                       std::vector<cpptrace::object_frame> const&     object_frames,
-                       std::vector<cpptrace::stacktrace_frame> const& stack_frames);
+    output_frame_table(string_table&                               strtab,
+                       std::vector<addr_t>                         pcs,
+                       view<cpptrace::object_frame>     object_frames,
+                       view<cpptrace::stacktrace_frame> stack_frames);
 };
 
 
@@ -241,30 +252,29 @@ struct output_record {
 
 /// Sanity check: we expect that the number of non-inline frames should match
 /// the number of program counters
-auto run_sanity_check_on_frames(size_t                                         pc_count,
-                                std::vector<cpptrace::stacktrace_frame> const& frames) -> void;
+auto run_sanity_check_on_frames(size_t pc_count, view<cpptrace::stacktrace_frame> frames)
+    -> void;
 
 /// Given an event_record, compute an ordering that sequences the event record,
 /// such that events are ordered by their id.
-auto compute_event_ordering(std::vector<event_record> const& events) -> std::vector<size_t>;
+auto compute_event_ordering(view<event_record> events) -> std::vector<size_t>;
 
 // Check if the vector of output events is sorted
-auto is_events_sorted(std::vector<output_event> const& events) -> bool;
+auto is_events_sorted(view<output_event> events) -> bool;
 
 /// Fill in the size of 'FREE' events, based on the size of the corresponding allocation
 auto compute_free_sizes(std::vector<output_event>& output_events) -> void;
 
 auto compute_output_events(string_table&                            strtab,
-                           std::vector<event_record> const&         events,
+                           view<event_record>            events,
                            map<addr_t, size_t> const&               pc_ids_lookup,
                            map<_mp_type_data const*, size_t> const& type_data_lookup)
     -> std::vector<output_event>;
 
 /// Computes a sorted list of all program counters that appear in the event records
-auto collect_pcs(std::vector<event_record> const& events) -> std::vector<addr_t>;
+auto collect_pcs(view<event_record> events) -> std::vector<addr_t>;
 
-auto collect_type_data(std::vector<event_record> const& events)
-    -> std::vector<_mp_type_data const*>;
+auto collect_type_data(view<event_record> events) -> std::vector<_mp_type_data const*>;
 
 /// Given the allocations that have occurred over the lifetime of the program,
 /// produce an `output_record` - a compact serializable representation of that data
