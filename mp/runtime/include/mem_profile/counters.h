@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <mp_unwind/mp_unwind.h>
+#include <mem_profile/alloc.h>
 #include <mp_types/types.h>
 
 
@@ -252,6 +253,8 @@ struct local_context {
     /// Destroys a local_context. Synchronizes counts with the global
     /// context, and decriments the LOCAL_CONTEXT_COUNT
     ~local_context();
+    void* operator new(size_t count) noexcept { return mperf_malloc(count); }
+    void  operator delete(void* ptr) noexcept { return mperf_free(ptr); }
 };
 
 
