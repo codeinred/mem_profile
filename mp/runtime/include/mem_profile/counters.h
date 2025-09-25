@@ -9,9 +9,10 @@
 #include <utility> // Needed for std::hash
 #include <vector>
 
-#include <mp_unwind/mp_unwind.h>
 #include <mem_profile/alloc.h>
+#include <mem_profile/allocator.h>
 #include <mp_types/types.h>
+#include <mp_unwind/mp_unwind.h>
 
 
 namespace mp {
@@ -84,7 +85,7 @@ struct trace_view {
     addr_t const* data() const noexcept { return data_; }
     size_t        size() const noexcept { return count; }
 
-    std::vector<addr_t> vec() const { return std::vector<addr_t>(data_, data_ + count); }
+    _vec<addr_t> vec() const { return _vec<addr_t>(data_, data_ + count); }
 };
 
 /// Represents a call graph annotated with allocation counts
@@ -149,22 +150,22 @@ struct event_record {
     void const* alloc_hint = nullptr;
 
     /// Trace of the event
-    std::vector<addr_t> trace;
+    _vec<addr_t> trace;
 
     /// Records information about objects taking part in the trace
-    std::vector<event_info> object_trace;
+    _vec<event_info> object_trace;
 };
 
 class alloc_counter {
-    alloc_count               total_allocs_;
-    std::vector<event_record> events_;
+    alloc_count        total_allocs_;
+    _vec<event_record> events_;
 
   public:
     alloc_counter()                     = default;
     alloc_counter(alloc_counter const&) = delete;
     alloc_counter(alloc_counter&&)      = default;
 
-    std::vector<event_record> const& events() const noexcept { return events_; }
+    _vec<event_record> const& events() const noexcept { return events_; }
 
 
     void record_alloc(uint64_t    id,
@@ -202,7 +203,7 @@ class alloc_counter {
             alloc_ptr,
             alloc_hint,
             trace.vec(),
-            std::vector<event_info>(event_buffer, event_buffer + event_count),
+            _vec<event_info>(event_buffer, event_buffer + event_count),
         });
     }
 
@@ -237,8 +238,7 @@ struct local_context {
     size_t        nest_level = 0;
     alloc_counter counter{};
 
-    /// Initializes a local_context and increments the LOCAL_CONTEXT_COUNT
-    local_context() noexcept;
+    local_context() = default;
 
     /// We delete the copy constructor because we don't want to move a
     /// local_context. it records a pointer to itself in the global_context,
@@ -250,9 +250,9 @@ struct local_context {
     /// a local variable, so it's not destructed as a temporary.
     counter_guard inc_nested() { return counter_guard(nest_level); }
 
-    /// Destroys a local_context. Synchronizes counts with the global
-    /// context, and decriments the LOCAL_CONTEXT_COUNT
-    ~local_context();
+    // These are provided so that allocating a new local_context on the heap
+    // circumvents the mem_profile tracking machinery, so that we avoid allocating
+    // while tracking other allocations
     void* operator new(size_t count) noexcept { return mperf_malloc(count); }
     void  operator delete(void* ptr) noexcept { return mperf_free(ptr); }
 };
@@ -262,10 +262,12 @@ struct local_context {
 /// threads, and generates a report for the entire program on destruction.
 /// local_contexts synchronize with the global_context on their destruction
 struct global_context {
-    std::mutex    context_lock;
-    alloc_counter counter;
+    std::mutex context_lock;
 
-    void drain(local_context& context);
+    // the global context knows about all existant counters
+    _vec<std::unique_ptr<local_context>> counters;
+
+    local_context* new_local_context();
 
     void generate_report();
 

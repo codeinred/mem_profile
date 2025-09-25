@@ -24,15 +24,13 @@ alloc_hook_table ALLOC_HOOK_TABLE{};
 /// - https://en.cppreference.com/w/cpp/utility/program/exit
 
 namespace mp {
-/// Counts the number of living local contexts
-std::atomic_int            LOCAL_CONTEXT_COUNT = 0;
 /// true if tracing is enabled. See tracing_enabled
-std::atomic_bool           TRACING_ENABLED     = true;
+std::atomic_bool            TRACING_ENABLED     = true;
 /// Keeps track of global allocation counts. Local Contexts synchronize with
 /// the global context on their destruction
-global_context             GLOBAL_CONTEXT{};
+global_context              GLOBAL_CONTEXT{};
 /// Keeps track of allocation counts on the current thread.
-thread_local local_context LOCAL_CONTEXT{};
+thread_local local_context* LOCAL_CONTEXT = GLOBAL_CONTEXT.new_local_context();
 
 /// Tracing is enabled provided that there are living local contexts.
 /// At the end of the program, all the local contexts will be destroyed
@@ -85,7 +83,7 @@ std::atomic_uint64_t EVENT_COUNTER = 0;
 /// - re-enables tracing (the guard re-enables it upon destruction)
 #define RECORD_ALLOC(_type, _alloc_size, _alloc_ptr, _alloc_hint)                                  \
     if (mp::tracing_enabled()) {                                                                   \
-        auto& context = mp::LOCAL_CONTEXT;                                                         \
+        auto& context = *mp::LOCAL_CONTEXT;                                                        \
         if (context.nest_level == 0) {                                                             \
             auto guard = context.inc_nested();                                                     \
                                                                                                    \
@@ -102,7 +100,7 @@ std::atomic_uint64_t EVENT_COUNTER = 0;
 
 #define RECORD_ALLOC_WITH_OBJECT_INFO(_type, _alloc_size, _alloc_ptr, _alloc_hint)                 \
     if (mp::tracing_enabled()) {                                                                   \
-        auto& context = mp::LOCAL_CONTEXT;                                                         \
+        auto& context = *mp::LOCAL_CONTEXT;                                                        \
         if (context.nest_level == 0) {                                                             \
             auto guard = context.inc_nested();                                                     \
                                                                                                    \
@@ -250,29 +248,31 @@ MP_EXPORT void operator delete[](void* ptr, std::align_val_t al) noexcept {
 ////////////////////////////////////////////////////
 
 namespace mp {
-local_context::local_context() noexcept {
-    LOCAL_CONTEXT_COUNT.fetch_add(1, std::memory_order_relaxed);
-}
-local_context::~local_context() {
-    GLOBAL_CONTEXT.drain(*this);
-    int prev_value = LOCAL_CONTEXT_COUNT.fetch_sub(1, std::memory_order_relaxed);
 
-    // if there was only 1 living counter, disable the has_living_counters_v
-    // flag
-    if (prev_value == 1) {
-        TRACING_ENABLED.store(false, std::memory_order_relaxed);
+local_context* global_context::new_local_context() {
+    // We MUST NOT allocate when creating the new local_context
+    // (we can perform untracked allocations, just not tracked ones)
+
+    // Does not allocate: uses `local_context.operator new`
+    auto  handle = std::make_unique<local_context>();
+    auto* ptr    = handle.get();
+
+    {
+        auto guard = std::lock_guard(context_lock);
+        // Does not allocate: uses mp::_vec
+        counters.push_back(std::move(handle));
     }
-}
 
-void global_context::drain(local_context& context) {
-    auto guard  = std::lock_guard(context_lock);
-    auto guard2 = LOCAL_CONTEXT.inc_nested();
-    // Drain the counts from the local_context
-    counter.drain(context.counter);
+    return ptr;
 }
 
 void global_context::generate_report() {
-    auto guard = std::lock_guard(context_lock);
+    TRACING_ENABLED = false;
+    auto counter    = alloc_counter();
+    auto guard      = std::lock_guard(context_lock);
+    for (auto& local_context : counters) {
+        counter.drain(local_context->counter);
+    }
     counter.dump_json(mp::mem_profile_out());
 }
 
