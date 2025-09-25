@@ -58,20 +58,6 @@ struct alloc_count {
 };
 
 
-struct flat_counts {
-    std::unordered_map<addr_t, alloc_count> counts;
-
-    std::vector<addr_t> get_addrs() const {
-        std::vector<addr_t> vec(counts.size());
-
-        size_t i = 0;
-        for (auto& [key, _] : counts) {
-            vec[i++] = key;
-        }
-
-        return vec;
-    }
-};
 
 /// Represents a view on a backtrace
 /// If you have a() -> b() -> c() (a calls b calls c),
@@ -228,21 +214,6 @@ class alloc_counter {
                        std::move_iterator(oe.data()),
                        std::move_iterator(oe.data() + oe.size()));
         oe.clear();
-    }
-
-
-    flat_counts get_counts() const {
-        std::unordered_map<addr_t, alloc_count> result;
-
-        for (auto const& record : events_) {
-            for (addr_t addr : record.trace) {
-                auto& dest = result[addr];
-                if (record.type != event_type::FREE) {
-                    dest.record_alloc(record.alloc_size);
-                }
-            }
-        }
-        return {result};
     }
 
 
