@@ -8,6 +8,7 @@
 #include <mem_profile/alloc.h>
 #include <mem_profile/prelude.h>
 #include <type_traits>
+#include <vector>
 
 namespace mp {
 template <class T>
@@ -54,4 +55,8 @@ struct allocator {
         return false;
     }
 };
+
+
+template <class T>
+using _vec = std::vector<T, mp::allocator<T>>;
 } // namespace mp
