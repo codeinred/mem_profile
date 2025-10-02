@@ -1,5 +1,7 @@
-#pragma once
-
 #include <vector>
 
-int main() { std::vector<int> v(10); }
+int main() {
+    std::vector<char> data = std::vector<char>(1234);
+
+    return 0;
+}
