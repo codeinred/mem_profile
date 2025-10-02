@@ -1,3 +1,4 @@
+#include <array>
 #include <thread>
 #include <vector>
 
