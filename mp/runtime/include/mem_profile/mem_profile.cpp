@@ -25,7 +25,7 @@ alloc_hook_table ALLOC_HOOK_TABLE{};
 
 namespace mp {
 /// true if tracing is enabled. See tracing_enabled
-std::atomic_bool            TRACING_ENABLED     = true;
+std::atomic_bool            TRACING_ENABLED = true;
 /// Keeps track of global allocation counts. Local Contexts synchronize with
 /// the global context on their destruction
 global_context              GLOBAL_CONTEXT{};
@@ -155,6 +155,7 @@ extern "C" MP_EXPORT void* memalign(size_t alignment, size_t size) {
 
 
 extern "C" MP_EXPORT void free(void* ptr) {
+    if (ptr == nullptr) return;
     RECORD_ALLOC_WITH_OBJECT_INFO(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
@@ -226,18 +227,22 @@ MP_EXPORT void* operator new[](size_t count, std::align_val_t al, const std::not
 /// Corresponding delete operators
 /// See: https://en.cppreference.com/w/cpp/memory/new/operator_delete
 MP_EXPORT void operator delete(void* ptr) noexcept {
+    if (ptr == nullptr) return;
     RECORD_ALLOC_WITH_OBJECT_INFO(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
 MP_EXPORT void operator delete[](void* ptr) noexcept {
+    if (ptr == nullptr) return;
     RECORD_ALLOC_WITH_OBJECT_INFO(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
 MP_EXPORT void operator delete(void* ptr, std::align_val_t al) noexcept {
+    if (ptr == nullptr) return;
     RECORD_ALLOC_WITH_OBJECT_INFO(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
 MP_EXPORT void operator delete[](void* ptr, std::align_val_t al) noexcept {
+    if (ptr == nullptr) return;
     RECORD_ALLOC_WITH_OBJECT_INFO(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
