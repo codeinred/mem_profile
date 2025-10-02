@@ -48,6 +48,13 @@ struct CheckUnwindError {
 int operator|(int errc, CheckUnwindError e) { return e.throw_if_bad(errc); }
 
 CheckUnwindError check(char const* msg) { return CheckUnwindError{msg}; }
+
+void dec_ipp(uintptr_t* ipp, size_t count) {
+    for (size_t i = 0; i < count; i++) {
+        ipp[i] -= 1;
+    }
+}
+
 } // namespace
 
 size_t mp_unwind(size_t max_frames, uintptr_t* ipp, uintptr_t* spp) {
@@ -57,15 +64,17 @@ size_t mp_unwind(size_t max_frames, uintptr_t* ipp, uintptr_t* spp) {
     unw_getcontext(&uc) | check("mp_unwind: Unable to get context");
     unw_init_local(&cursor, &uc) | check("mp_unwind: Unable to initialize cursor.");
 
-    for (size_t i = 0; i < max_frames; i++) {
+    size_t i = 0;
+    for (; i < max_frames; i++) {
         unw_get_reg(&cursor, UNW_REG_IP, ipp + i) | check("mp_unwind: Cannot read UNW_REG_IP");
         unw_get_reg(&cursor, UNW_REG_SP, spp + i) | check("mp_unwind: Cannot read UNW_REG_SP");
         int step_result = unw_step(&cursor) | check("mp_unwind: unable to step");
         // We reached the final frame
-        if (step_result == 0) return i + 1;
+        if (step_result == 0) break;
     }
 
-    return max_frames;
+    dec_ipp(ipp, i);
+    return i;
 }
 
 size_t mp_unwind(size_t max_frames, uintptr_t* ipp) {
@@ -75,14 +84,16 @@ size_t mp_unwind(size_t max_frames, uintptr_t* ipp) {
     unw_getcontext(&uc) | check("mp_unwind: Unable to get context");
     unw_init_local(&cursor, &uc) | check("mp_unwind: Unable to initialize cursor.");
 
-    for (size_t i = 0; i < max_frames; i++) {
+    size_t i = 0;
+    for (; i < max_frames; i++) {
         unw_get_reg(&cursor, UNW_REG_IP, ipp + i) | check("mp_unwind: Cannot read UNW_REG_IP");
         int step_result = unw_step(&cursor) | check("mp_unwind: unable to step");
         // We reached the final frame
-        if (step_result == 0) return i + 1;
+        if (step_result == 0) break;
     }
 
-    return max_frames;
+    dec_ipp(ipp, i);
+    return i;
 }
 
 
@@ -193,7 +204,7 @@ void mp_unwind_show_trace() {
         count++;
     } while (unw_step(&cursor) > 0);
 
-    for (int i = 0; i < count - 1; i++) {
+    for (size_t i = 0; i < count - 1; i++) {
         unw_word_t  frame_end   = spp[i + 1];
         unw_word_t  frame_start = spp[i];
         unw_word_t  frame_size  = frame_end - frame_start;
