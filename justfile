@@ -110,29 +110,9 @@ build_ex_target example_name: install
 mp_run *args:
     env {{ld_preload}}=build/libmp_runtime.{{lib_ext}} {{args}}
 
-_gen_test_file prog:
-    @just {{dsymutil_tgt}} examples/build/{{prog}}
-    @just mp_run MEM_PROFILE_OUT=etc/test_files/{{os()}}/{{prog}}.json examples/build/{{prog}}
-
 gen_test_files: build_example
     mkdir -p etc/test_files/{{os()}}
-    @just {{dsymutil_tgt}} build/libmp_runtime.{{lib_ext}}
-    @just _gen_test_file simple_alloc
-    @just _gen_test_file simple_nested_objects
-    @just _gen_test_file single_alloc
-    @just _gen_test_file string
-    @just _gen_test_file objects
-    @just _gen_test_file objects_in_array
-    @just _gen_test_file objects_in_vector
-    @just _gen_test_file objects_in_variant
-    @just _gen_test_file objects_in_union
-    @just _gen_test_file objects_in_lambda
-    @just _gen_test_file objects_beman_inplace
-    @just _gen_test_file objects_in_svector
-    @just _gen_test_file objects_in_svector_martinus
-    @just _gen_test_file tuplet_demo
-    @just _gen_test_file test_std_string
-    @just _gen_test_file test_global
+    bash etc/gen_test_files.sh
 
 run_example example: build_example
     examples/build/{{example}}
