@@ -3,12 +3,13 @@
 #include <climits> // Needed for CHAR_BIT
 #include <cstddef>
 #include <cstdint>
-#include <mem_profile/prelude.h>
+#include <memory>
 #include <mutex>   // Needed for global_context
 #include <unordered_map>
 #include <utility> // Needed for std::hash
 #include <vector>
 
+#include <mem_profile/prelude.h>
 #include <mem_profile/alloc.h>
 #include <mem_profile/allocator.h>
 #include <mp_types/types.h>
