@@ -1,0 +1,23 @@
+# realloc(p, 0): the correct event stream differs per platform, so the
+# assertions are platform-scoped.
+#
+# - glibc frees p and returns null; the hook records a FREE for p, which is
+#   attributed to Shrinker (1234 bytes). Without that recording, Shrinker
+#   never appears in the profile at all.
+# - macOS returns a live minimal allocation, consuming p via the realloc
+#   hint; the 1234 bytes are released through the hint (no FREE event), so
+#   Shrinker is typed with 0 bytes via the free of the replacement block.
+
+[[types]]
+platforms = ["linux"]
+type = "Shrinker"
+size = 8
+objects = 1
+bytes = 1234
+
+[[types]]
+platforms = ["darwin"]
+type = "Shrinker"
+size = 8
+objects = 1
+bytes = 0

@@ -69,6 +69,13 @@ std::atomic_uint64_t EVENT_COUNTER = 0;
 /// the backtrace, so the top of the backtrace should always say "malloc" or
 /// another allocation function
 ///
+/// Failed allocations (null pointers) are never recorded: the guard lives in
+/// the macro so every hook gets it. Without it, a failed huge request would
+/// inflate the byte counters by the requested size and emit an ALLOC event at
+/// address 0 with no matching FREE. (RECORD_ALLOC is only ever used for ALLOC
+/// events; FREE goes through RECORD_ALLOC_WITH_OBJECT_INFO, whose callers
+/// return early on null.)
+///
 /// Procedure:
 ///
 /// Checks if tracing is enabled globally. If there are no more living local
@@ -84,7 +91,7 @@ std::atomic_uint64_t EVENT_COUNTER = 0;
 /// - records the current allocation and it's backtrace
 /// - re-enables tracing (the guard re-enables it upon destruction)
 #define RECORD_ALLOC(_type, _alloc_size, _alloc_ptr, _alloc_hint)                                  \
-    if (mp::tracing_enabled()) {                                                                   \
+    if ((_alloc_ptr) != nullptr && mp::tracing_enabled()) {                                        \
         auto& context = *mp::LOCAL_CONTEXT;                                                        \
         if (context.nest_level == 0) {                                                             \
             auto guard = context.inc_nested();                                                     \
@@ -134,17 +141,10 @@ using namespace mp;
 #define MP_INTERPOSER(name) name
 #endif
 
-/// Failed allocations (null results) are never recorded: record_alloc has no
-/// null guard, so a failed huge request would otherwise inflate the byte
-/// counters by the requested size and emit an ALLOC event at address 0 with
-/// no matching FREE.
-
 extern "C" MP_EXPORT void* MP_INTERPOSER(malloc)(size_t size) {
     auto result = mperf_malloc(size);
 
-    if (result != nullptr) {
-        RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
-    }
+    RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
 
     return result;
 }
@@ -152,9 +152,7 @@ extern "C" MP_EXPORT void* MP_INTERPOSER(malloc)(size_t size) {
 extern "C" MP_EXPORT void* MP_INTERPOSER(calloc)(size_t n, size_t size) {
     auto result = mperf_calloc(n, size);
 
-    if (result != nullptr) {
-        RECORD_ALLOC(event_type::ALLOC, n * size, result, nullptr);
-    }
+    RECORD_ALLOC(event_type::ALLOC, n * size, result, nullptr);
 
     return result;
 }
@@ -162,13 +160,17 @@ extern "C" MP_EXPORT void* MP_INTERPOSER(calloc)(size_t n, size_t size) {
 extern "C" MP_EXPORT void* MP_INTERPOSER(realloc)(void* hint, size_t n) {
     auto result = mperf_realloc(hint, n);
 
-    // A null result means the old block is untouched — except for
-    // realloc(p, 0), where glibc frees p and returns null; that free goes
-    // unrecorded, but no consumer of the event stream tracks it (address-0
-    // events are skipped before their hint is read).
-    if (result != nullptr) {
-        RECORD_ALLOC(event_type::ALLOC, n, result, hint);
+    RECORD_ALLOC(event_type::ALLOC, n, result, hint);
+
+#if __GLIBC__ >= 2
+    // A null result normally means the old block is untouched and stays
+    // live — except for realloc(p, 0), which glibc implements as free(p).
+    // Record that free, or the earlier ALLOC for p would never be matched
+    // and p's address would appear live forever.
+    if (result == nullptr && n == 0 && hint != nullptr) {
+        RECORD_ALLOC_WITH_OBJECT_INFO(event_type::FREE, 0, hint, nullptr);
     }
+#endif
 
     return result;
 }
@@ -178,9 +180,7 @@ extern "C" MP_EXPORT void* MP_INTERPOSER(realloc)(void* hint, size_t n) {
 extern "C" MP_EXPORT void* memalign(size_t alignment, size_t size) {
     auto result = mperf_memalign(alignment, size);
 
-    if (result != nullptr) {
-        RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
-    }
+    RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
 
     return result;
 }
@@ -226,9 +226,7 @@ extern "C" MP_EXPORT void* aligned_alloc(size_t alignment, size_t size) noexcept
     }
     void* result = mperf_memalign(alignment, size);
 
-    if (result != nullptr) {
-        RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
-    }
+    RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
 
     return result;
 }

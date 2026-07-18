@@ -9,11 +9,14 @@ list means the profile passed.
 Expectation bounds are written either as a bare integer (exact) or as a table
 with any of `eq` / `min` / `max`, e.g. `bytes = 4000` or `bytes = { min = 1 }`.
 Type names are matched with glob patterns (`fnmatch`); a name without wildcard
-characters is an exact match.
+characters is an exact match. A `[[types]]` entry may carry
+`platforms = ["linux", ...]` (sys.platform values) to apply only there — for
+cases whose correct event stream differs per platform.
 """
 
 from __future__ import annotations
 
+import sys
 from typing import Any, Optional, Union
 
 from .profile import FieldInfo, Profile, TypeInfo
@@ -31,6 +34,9 @@ def check_expectations(profile: Profile, spec: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     _check_totals(profile, spec.get("totals", {}), errors)
     for type_spec in spec.get("types", []):
+        platforms: list[str] = type_spec.get("platforms", [])
+        if platforms and sys.platform not in platforms:
+            continue
         _check_type(profile, type_spec, errors)
     return errors
 

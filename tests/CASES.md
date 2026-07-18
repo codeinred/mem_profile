@@ -44,6 +44,10 @@ Design rules applied throughout:
   GitHub issue is marked `xfail = "gh-N"` (optionally platform-qualified) in its
   `expect.toml`. An xfail that _passes_ is reported prominently so a fix flips
   the case to a permanent regression guard.
+- **Platform-scoped assertions.** When a case's _correct_ event stream differs
+  per platform (not a bug — divergent libc semantics), a `[[types]]` entry may
+  carry `platforms = ["linux"]` / `["darwin"]` (sys.platform values) and is only
+  checked there. Distinct from xfail, which marks expected _failures_.
 
 | Case                     | Level | What it validates                                                                                                                                                                                                 |
 | ------------------------ | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -51,6 +55,7 @@ Design rules applied throughout:
 | `basic_malloc_free`      | L1    | Same shape but the C allocation path: `malloc` in ctor, `free` in dtor. On macOS this guards the `__DATA,__interpose` table (plain symbol export cannot interpose the C allocator there).                         |
 | `aligned_new`            | L2    | Over-aligned type via `new`/`delete` (the `align_val_t` operator pair). `sizeof != alignof` by design, so swapped memalign arguments would corrupt the heap.                                                      |
 | `aligned_c_api`          | L1    | `posix_memalign` + `aligned_alloc` owned/freed by a dtor. Interposed on macOS via the dyld table; hooked under their own exported names on Linux (glibc's versions bypass the `memalign` hook).                   |
+| `realloc_zero`           | L1    | `realloc(p, 0)`: glibc frees `p` (the hook must record that free); macOS returns a live minimal allocation. Platform-scoped assertions via the `platforms` key.                                                   |
 | `object_counts`          | L1    | One type destroyed 5 times (3 stack, 2 heap) with per-instance allocations; asserts `objects = 5` (distinct destructor invocations) and total bytes.                                                              |
 | `out_of_line_dtor`       | L1    | Dtor declared in-class, defined out-of-line in the same TU (external linkage → eagerly emitted by CodeGen; regression guard for gh-2).                                                                            |
 | `split_tu_dtor`          | L1    | Dtor defined in a _second_ translation unit (two `.cpp` files); same eager-emission mechanism as `out_of_line_dtor` (gh-2 guard).                                                                                 |
