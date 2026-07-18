@@ -1,11 +1,8 @@
 # posix_memalign + aligned_alloc attribution (2900 + 1536 bytes).
 #
-# Known gap on Linux: glibc's aligned allocators do not pass through the
-# exported memalign hook, so these allocations go unrecorded there.
-
-[case]
-xfail = "linux-aligned-alloc-interpose"
-xfail_platforms = ["linux"]
+# On macOS these are hooked via the dyld interpose table; on Linux they are
+# exported under their own names (glibc's versions do not route through the
+# memalign hook and have no __libc_ aliases).
 
 [totals]
 typed_free_bytes = { min = 4436 }

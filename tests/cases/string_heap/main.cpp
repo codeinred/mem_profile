@@ -1,7 +1,8 @@
 // L2: std::string in both storage modes. The large string allocates on the
 // heap and must be attributed to the string type; the small strings stay in
-// SSO storage and must allocate nothing. Exercises gh-3 on macOS
-// (std::string not instrumented properly there).
+// SSO storage and must allocate nothing. Exercises gh-3: extern template
+// declarations in both libc++ and libstdc++ bind the dtor call to a
+// never-instrumented copy inside the C++ runtime library.
 #include <string>
 
 int main() {

@@ -1,9 +1,18 @@
 # Heap string attributed to the string type; SSO strings allocate nothing.
-# gh-3: std::string is not instrumented properly on macOS.
+# gh-3: both libc++ and libstdc++ declare `extern template class basic_string`,
+# so the dtor call binds to a never-instrumented copy inside the C++ runtime
+# library (verified in IR: only a declaration of ~basic_string is emitted in
+# the TU). Cross-platform, so the xfail is unscoped.
+#
+# Standard-version nuance (libstdc++): the extern template is guarded by
+# `__cplusplus <= 202002L`, so under -std=c++23 the string is implicitly
+# instantiated per-TU and this case passes (verified end-to-end). It also
+# passed on older GCC, where _GLIBCXX_EXTERN_TEMPLATE was -1 for the cxx11
+# ABI. The suite builds with -std=c++20, where the issue is live; bumping the
+# standard would mask gh-3, not fix it.
 
 [case]
 xfail = "gh-3"
-xfail_platforms = ["darwin"]
 
 [totals]
 typed_free_bytes = { min = 5000 }

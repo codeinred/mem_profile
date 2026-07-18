@@ -120,7 +120,19 @@ std::atomic_uint64_t EVENT_COUNTER = 0;
 
 using namespace mp;
 
-extern "C" MP_EXPORT void* malloc(size_t size) {
+/// On Linux, the hooks are exported under the libc names, and LD_PRELOAD
+/// makes them shadow the real ones. On macOS, two-level namespaces bind an
+/// application's calls to libSystem at static link time, so exporting the
+/// libc names does nothing; instead the hooks get unique names and are wired
+/// to the libc functions through dyld's __DATA,__interpose section (see the
+/// table after the hook definitions).
+#if defined(__APPLE__)
+#define MP_INTERPOSER(name) mp_interpose_##name
+#else
+#define MP_INTERPOSER(name) name
+#endif
+
+extern "C" MP_EXPORT void* MP_INTERPOSER(malloc)(size_t size) {
     auto result = mperf_malloc(size);
 
     RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
@@ -128,7 +140,7 @@ extern "C" MP_EXPORT void* malloc(size_t size) {
     return result;
 }
 
-extern "C" MP_EXPORT void* calloc(size_t n, size_t size) {
+extern "C" MP_EXPORT void* MP_INTERPOSER(calloc)(size_t n, size_t size) {
     auto result = mperf_calloc(n, size);
 
     RECORD_ALLOC(event_type::ALLOC, n * size, result, nullptr);
@@ -136,7 +148,7 @@ extern "C" MP_EXPORT void* calloc(size_t n, size_t size) {
     return result;
 }
 
-extern "C" MP_EXPORT void* realloc(void* hint, size_t n) {
+extern "C" MP_EXPORT void* MP_INTERPOSER(realloc)(void* hint, size_t n) {
     auto result = mperf_realloc(hint, n);
 
     RECORD_ALLOC(event_type::ALLOC, n, result, hint);
@@ -144,6 +156,9 @@ extern "C" MP_EXPORT void* realloc(void* hint, size_t n) {
     return result;
 }
 
+
+#if !defined(__APPLE__)
+#include <cerrno>
 
 extern "C" MP_EXPORT void* memalign(size_t alignment, size_t size) {
     auto result = mperf_memalign(alignment, size);
@@ -153,12 +168,109 @@ extern "C" MP_EXPORT void* memalign(size_t alignment, size_t size) {
     return result;
 }
 
+/// glibc's posix_memalign and aligned_alloc do not route through memalign,
+/// and glibc exports no __libc_ aliases for them, so they are hooked under
+/// their own names. Both are implemented on top of mperf_memalign
+/// (__libc_memalign on glibc), whose result is always valid to pass to free;
+/// the alignment validation each entry point would normally perform is
+/// replicated here.
 
-extern "C" MP_EXPORT void free(void* ptr) {
+extern "C" MP_EXPORT int posix_memalign(void** memptr, size_t alignment, size_t size) {
+    // POSIX: the alignment must be a power of two and a multiple of
+    // sizeof(void*). Validated here because memalign itself accepts (rounds
+    // up) alignments that posix_memalign must reject with EINVAL.
+    if (alignment == 0 || (alignment & (alignment - 1)) != 0
+        || alignment % sizeof(void*) != 0) {
+        return EINVAL;
+    }
+    void* result = mperf_memalign(alignment, size);
+    if (result == nullptr) {
+        return ENOMEM;
+    }
+
+    RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
+
+    *memptr = result;
+    return 0;
+}
+
+extern "C" MP_EXPORT void* aligned_alloc(size_t alignment, size_t size) {
+    // glibc parity: non-power-of-two alignments fail with EINVAL rather than
+    // being rounded up the way memalign would.
+    if (alignment == 0 || (alignment & (alignment - 1)) != 0) {
+        errno = EINVAL;
+        return nullptr;
+    }
+    void* result = mperf_memalign(alignment, size);
+
+    RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
+
+    return result;
+}
+#endif
+
+
+extern "C" MP_EXPORT void MP_INTERPOSER(free)(void* ptr) {
     if (ptr == nullptr) return;
     RECORD_ALLOC_WITH_OBJECT_INFO(event_type::FREE, 0, ptr, nullptr);
     mperf_free(ptr);
 }
+
+
+#if defined(__APPLE__)
+/// Aligned-allocation entry points of libSystem. These have no memalign
+/// equivalent on macOS, so they are hooked individually to record aligned
+/// allocations made through the C API.
+extern "C" MP_EXPORT int mp_interpose_posix_memalign(void** memptr, size_t alignment,
+                                                     size_t size) {
+    int errc = ::posix_memalign(memptr, alignment, size);
+    if (errc == 0) {
+        RECORD_ALLOC(event_type::ALLOC, size, *memptr, nullptr);
+    }
+    return errc;
+}
+
+extern "C" MP_EXPORT void* mp_interpose_aligned_alloc(size_t alignment, size_t size) {
+    void* result = ::aligned_alloc(alignment, size);
+
+    RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
+
+    return result;
+}
+
+extern "C" MP_EXPORT void* mp_interpose_valloc(size_t size) {
+    void* result = ::valloc(size);
+
+    RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
+
+    return result;
+}
+
+
+/// dyld interposition table. Each entry makes every *other* image's binding
+/// of `replacee` call `replacement` instead. Calls from this image are
+/// exempt, which is what lets the hooks (and the rest of the runtime) reach
+/// the real functions by their plain names.
+namespace {
+struct interpose_pair {
+    void const* replacement;
+    void const* replacee;
+};
+} // namespace
+
+#define MP_INTERPOSE(name)                                                                         \
+    __attribute__((used, section("__DATA,__interpose")))                                           \
+    static interpose_pair _mp_interpose_pair_##name                                                \
+        = {(void const*)&mp_interpose_##name, (void const*)&::name}
+
+MP_INTERPOSE(malloc);
+MP_INTERPOSE(calloc);
+MP_INTERPOSE(realloc);
+MP_INTERPOSE(free);
+MP_INTERPOSE(posix_memalign);
+MP_INTERPOSE(aligned_alloc);
+MP_INTERPOSE(valloc);
+#endif
 
 
 //////////////////////////////////////////////////////////
@@ -191,11 +303,11 @@ MP_EXPORT void* operator new(size_t count) { ALLOCATE_OR_THROW(count, mperf_mall
 MP_EXPORT void* operator new[](size_t count) { ALLOCATE_OR_THROW(count, mperf_malloc(count)); }
 
 MP_EXPORT void* operator new(size_t count, std::align_val_t al) {
-    ALLOCATE_OR_THROW(count, mperf_memalign(count, (size_t)al));
+    ALLOCATE_OR_THROW(count, mperf_memalign((size_t)al, count));
 }
 
 MP_EXPORT void* operator new[](size_t count, std::align_val_t al) {
-    ALLOCATE_OR_THROW(count, mperf_memalign(count, (size_t)al));
+    ALLOCATE_OR_THROW(count, mperf_memalign((size_t)al, count));
 }
 
 
@@ -212,14 +324,14 @@ MP_EXPORT void* operator new[](size_t count, const std::nothrow_t&) noexcept {
 }
 
 MP_EXPORT void* operator new(size_t count, std::align_val_t al, const std::nothrow_t&) noexcept {
-    auto result = mperf_memalign(count, (size_t)al);
+    auto result = mperf_memalign((size_t)al, count);
     RECORD_ALLOC(event_type::ALLOC, count, result, nullptr);
     return result;
 }
 
 MP_EXPORT void* operator new[](size_t count, std::align_val_t al, const std::nothrow_t&) noexcept {
 
-    auto result = mperf_memalign(count, (size_t)al);
+    auto result = mperf_memalign((size_t)al, count);
     RECORD_ALLOC(event_type::ALLOC, count, result, nullptr);
     return result;
 }

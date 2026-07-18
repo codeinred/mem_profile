@@ -8,3 +8,4 @@ install/
 malloc_stats.json
 __pycache__
 *.egg-info
+logs/
