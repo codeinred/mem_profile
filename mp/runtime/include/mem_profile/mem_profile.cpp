@@ -50,6 +50,8 @@ inline bool tracing_enabled() noexcept { return TRACING_ENABLED.load(std::memory
 
 /// Used to get __GLIBC__
 #include <cstdlib>
+/// Used for EINVAL/ENOMEM in the aligned-allocation hooks
+#include <cerrno>
 /// Used for backtrace()
 #include <mem_profile/trace.h>
 // Used to get underlying malloc implementation
@@ -132,10 +134,17 @@ using namespace mp;
 #define MP_INTERPOSER(name) name
 #endif
 
+/// Failed allocations (null results) are never recorded: record_alloc has no
+/// null guard, so a failed huge request would otherwise inflate the byte
+/// counters by the requested size and emit an ALLOC event at address 0 with
+/// no matching FREE.
+
 extern "C" MP_EXPORT void* MP_INTERPOSER(malloc)(size_t size) {
     auto result = mperf_malloc(size);
 
-    RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
+    if (result != nullptr) {
+        RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
+    }
 
     return result;
 }
@@ -143,7 +152,9 @@ extern "C" MP_EXPORT void* MP_INTERPOSER(malloc)(size_t size) {
 extern "C" MP_EXPORT void* MP_INTERPOSER(calloc)(size_t n, size_t size) {
     auto result = mperf_calloc(n, size);
 
-    RECORD_ALLOC(event_type::ALLOC, n * size, result, nullptr);
+    if (result != nullptr) {
+        RECORD_ALLOC(event_type::ALLOC, n * size, result, nullptr);
+    }
 
     return result;
 }
@@ -151,19 +162,25 @@ extern "C" MP_EXPORT void* MP_INTERPOSER(calloc)(size_t n, size_t size) {
 extern "C" MP_EXPORT void* MP_INTERPOSER(realloc)(void* hint, size_t n) {
     auto result = mperf_realloc(hint, n);
 
-    RECORD_ALLOC(event_type::ALLOC, n, result, hint);
+    // A null result means the old block is untouched — except for
+    // realloc(p, 0), where glibc frees p and returns null; that free goes
+    // unrecorded, but no consumer of the event stream tracks it (address-0
+    // events are skipped before their hint is read).
+    if (result != nullptr) {
+        RECORD_ALLOC(event_type::ALLOC, n, result, hint);
+    }
 
     return result;
 }
 
 
 #if !defined(__APPLE__)
-#include <cerrno>
-
 extern "C" MP_EXPORT void* memalign(size_t alignment, size_t size) {
     auto result = mperf_memalign(alignment, size);
 
-    RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
+    if (result != nullptr) {
+        RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
+    }
 
     return result;
 }
@@ -173,14 +190,18 @@ extern "C" MP_EXPORT void* memalign(size_t alignment, size_t size) {
 /// their own names. Both are implemented on top of mperf_memalign
 /// (__libc_memalign on glibc), whose result is always valid to pass to free;
 /// the alignment validation each entry point would normally perform is
-/// replicated here.
+/// replicated here. Both are noexcept to match the __THROW on glibc's
+/// declarations (the neighboring hooks omit it and compile only via
+/// system-header leniency).
 
-extern "C" MP_EXPORT int posix_memalign(void** memptr, size_t alignment, size_t size) {
+static bool is_pow2(size_t n) { return n != 0 && (n & (n - 1)) == 0; }
+
+extern "C" MP_EXPORT int posix_memalign(void** memptr, size_t alignment,
+                                        size_t size) noexcept {
     // POSIX: the alignment must be a power of two and a multiple of
     // sizeof(void*). Validated here because memalign itself accepts (rounds
     // up) alignments that posix_memalign must reject with EINVAL.
-    if (alignment == 0 || (alignment & (alignment - 1)) != 0
-        || alignment % sizeof(void*) != 0) {
+    if (!is_pow2(alignment) || alignment % sizeof(void*) != 0) {
         return EINVAL;
     }
     void* result = mperf_memalign(alignment, size);
@@ -194,16 +215,20 @@ extern "C" MP_EXPORT int posix_memalign(void** memptr, size_t alignment, size_t 
     return 0;
 }
 
-extern "C" MP_EXPORT void* aligned_alloc(size_t alignment, size_t size) {
+extern "C" MP_EXPORT void* aligned_alloc(size_t alignment, size_t size) noexcept {
     // glibc parity: non-power-of-two alignments fail with EINVAL rather than
-    // being rounded up the way memalign would.
-    if (alignment == 0 || (alignment & (alignment - 1)) != 0) {
+    // being rounded up the way memalign would. Parity targets glibc >= 2.38;
+    // before that, aligned_alloc was a plain memalign alias that accepted any
+    // alignment, and 2.38 added this rejection.
+    if (!is_pow2(alignment)) {
         errno = EINVAL;
         return nullptr;
     }
     void* result = mperf_memalign(alignment, size);
 
-    RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
+    if (result != nullptr) {
+        RECORD_ALLOC(event_type::ALLOC, size, result, nullptr);
+    }
 
     return result;
 }
