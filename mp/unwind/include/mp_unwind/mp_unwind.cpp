@@ -69,8 +69,14 @@ size_t mp_unwind(size_t max_frames, uintptr_t* ipp, uintptr_t* spp) {
         unw_get_reg(&cursor, UNW_REG_IP, ipp + i) | check("mp_unwind: Cannot read UNW_REG_IP");
         unw_get_reg(&cursor, UNW_REG_SP, spp + i) | check("mp_unwind: Cannot read UNW_REG_SP");
         int step_result = unw_step(&cursor) | check("mp_unwind: unable to step");
-        // We reached the final frame
-        if (step_result == 0) break;
+        // We reached the final frame. Count it before stopping: its SP is
+        // needed as the scan boundary for the frame below it (otherwise a
+        // destructor called directly from the outermost frame can never be
+        // scanned by mp_extract_events).
+        if (step_result == 0) {
+            i++;
+            break;
+        }
     }
 
     dec_ipp(ipp, i);
@@ -88,8 +94,12 @@ size_t mp_unwind(size_t max_frames, uintptr_t* ipp) {
     for (; i < max_frames; i++) {
         unw_get_reg(&cursor, UNW_REG_IP, ipp + i) | check("mp_unwind: Cannot read UNW_REG_IP");
         int step_result = unw_step(&cursor) | check("mp_unwind: unable to step");
-        // We reached the final frame
-        if (step_result == 0) break;
+        // We reached the final frame. Count it before stopping (see the
+        // spp-collecting overload above).
+        if (step_result == 0) {
+            i++;
+            break;
+        }
     }
 
     dec_ipp(ipp, i);
