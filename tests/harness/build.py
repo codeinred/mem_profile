@@ -75,23 +75,11 @@ def build_case(
     Raises CaseCommandError on failure. The full compiler invocation and output
     are saved to `work_dir/build.log` either way.
     """
-    sources = sorted(case_dir.glob("*.cpp"))
+    sources = case_sources(case_dir)
     if not sources:
         raise CaseCommandError(f"no .cpp files in {case_dir}")
     exe = work_dir / case_dir.name
-    cmd = [
-        str(toolchain.clangxx),
-        "-std=c++20",
-        "-Og",
-        "-g",
-        "-Wall",
-        f"--include={toolchain.prelude}",
-        f"-fplugin={toolchain.plugin}",
-        *extra_flags,
-        *map(str, sources),
-        "-o",
-        str(exe),
-    ]
+    cmd = plugin_compile_command(toolchain, sources, exe, extra_flags)
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=COMPILE_TIMEOUT_S)
     (work_dir / "build.log").write_text(
         f"$ {' '.join(cmd)}\n{result.stdout}{result.stderr}"
@@ -117,6 +105,30 @@ def run_case(toolchain: Toolchain, exe: Path, out_json: Path) -> subprocess.Comp
         env=env,
         cwd=exe.parent,
     )
+
+
+def case_sources(case_dir: Path) -> list[Path]:
+    """The .cpp files making up a case, in stable order."""
+    return sorted(case_dir.glob("*.cpp"))
+
+
+def plugin_compile_command(
+    toolchain: Toolchain, sources: list[Path], output: Path, extra_flags: list[str]
+) -> list[str]:
+    """The canonical plugin-enabled compile command for test-case sources."""
+    return [
+        str(toolchain.clangxx),
+        "-std=c++20",
+        "-Og",
+        "-g",
+        "-Wall",
+        f"--include={toolchain.prelude}",
+        f"-fplugin={toolchain.plugin}",
+        *extra_flags,
+        *map(str, sources),
+        "-o",
+        str(output),
+    ]
 
 
 class CaseCommandError(Exception):

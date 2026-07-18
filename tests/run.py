@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from harness.build import CaseCommandError, Toolchain, build_case, run_case
 from harness.checks import check_expectations, check_invariants
+from harness.ircheck import check_ir
 from harness.profile import Profile
 
 TESTS_DIR = Path(__file__).resolve().parent
@@ -158,6 +159,10 @@ def collect_case_errors(
     profile = Profile(str(out_json))
     errors += [f"invariant: {e}" for e in check_invariants(profile)]
     errors += check_expectations(profile, spec)
+    if "ir" in spec:
+        errors += check_ir(
+            toolchain, case.path, work_dir, spec.get("build", {}).get("flags", []), spec["ir"]
+        )
     return errors, summarize(profile) if verbose else ""
 
 

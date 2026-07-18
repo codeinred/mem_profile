@@ -1,0 +1,15 @@
+# Out-of-line `= default` dtor: external linkage + defaulted (boundary case).
+
+[[types]]
+type = "OutOfLineDflt"
+size = 24
+objects = 1
+bytes = 2600
+
+  [[types.fields]]
+  name = "v"
+  offset = 0
+  bytes = 2600
+
+[ir]
+instrumented = ["OutOfLineDflt"]

@@ -21,3 +21,6 @@ bytes = 6000
   name = "data"
   offset = 0
   bytes = 6000
+
+[ir]
+instrumented = ["Holder"]

@@ -14,3 +14,6 @@ type = "Bar"
 size = 8
 objects = 1
 bytes = 1000
+
+[ir]
+instrumented = ["Foo", "Bar"]

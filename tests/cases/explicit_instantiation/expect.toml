@@ -1,0 +1,16 @@
+# Explicit instantiation definition (weak_odr) + implicit instantiation.
+
+[[types]]
+type = "Tpl<double>"
+size = 24
+objects = 1
+bytes = 4000
+
+[[types]]
+type = "Tpl<int>"
+size = 24
+objects = 1
+bytes = 3200
+
+[ir]
+instrumented = ["Tpl"]

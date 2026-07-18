@@ -1,10 +1,10 @@
-# Out-of-line dtor definition (same TU).
-#
-# Fails per gh-2: the destructor's out-of-line definition is not instrumented
-# (its member vector shows up in chains, but OutOfLine itself never does).
+# Out-of-line dtor definition (same TU). Regression guard for gh-2:
+# external-linkage destructor definitions are emitted by CodeGen mid-parse,
+# so they must be instrumented in the eager HandleTopLevelDecl pass — an
+# end-of-TU rewrite arrives after the IR is already emitted.
 
-[case]
-xfail = "gh-2"
+[ir]
+instrumented = ["OutOfLine"]
 
 [[types]]
 type = "OutOfLine"

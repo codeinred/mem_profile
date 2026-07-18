@@ -1,8 +1,8 @@
-# Dtor defined in a second TU; fails per gh-2 (same signature as
-# out_of_line_dtor: the member vector appears in chains, SplitTu does not).
+# Dtor defined in a second TU. Regression guard for gh-2; same mechanism as
+# out_of_line_dtor (external linkage forces eager CodeGen emission).
 
-[case]
-xfail = "gh-2"
+[ir]
+instrumented = ["SplitTu"]
 
 [[types]]
 type = "SplitTu"
