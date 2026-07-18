@@ -13,16 +13,36 @@
 
 #include <mp_core/colors.h>
 
+#include <ankerl/unordered_dense.h>
 #include <mp_ast/ast_tools.h>
 #include <mp_error/error.h>
-#include <unordered_set>
 
 namespace mp {
 using namespace clang;
 
+/// Rewrites destructor bodies to inject the profiling payload.
+///
+/// The visitor is persistent for the whole TU and is invoked in two passes
+/// (see ast_consumer): an eager pass from HandleTopLevelDecl, which beats
+/// CodeGen's eager emission of external-linkage definitions, and an end-of-TU
+/// sweep that picks up everything Sema defines lazily. A decl may be
+/// traversed many times across (and within) those passes, so skip conditions
+/// are re-evaluated on every encounter and a decl is recorded in `rewritten`
+/// only when the payload is actually injected.
 struct dtor_visitor : public RecursiveASTVisitor<dtor_visitor>, ast_tools {
   public:
-    std::unordered_set<CXXDestructorDecl*> dtors;
+    /// Destructors that have already been instrumented. The payload must only
+    /// be injected the first time a decl is encountered.
+    ankerl::unordered_dense::set<CXXDestructorDecl*> rewritten;
+
+    /// False during the first pass (the eager, per-top-level-decl pass);
+    /// ast_consumer sets it to true for the second pass (the end-of-TU
+    /// sweep). While false, bodiless implicit and defaulted destructors are
+    /// left alone — Sema may not have defined them yet, and
+    /// DefineImplicitDestructor assumes the destructor has no body. They are
+    /// picked up by the sweep instead, which is early enough because they are
+    /// always emitted with deferred (linkonce_odr) linkage.
+    bool allow_implicit = false;
 
     /// If true, print the names of dtors as they're rewritten
     bool print_dtor_name = false;
@@ -33,32 +53,19 @@ struct dtor_visitor : public RecursiveASTVisitor<dtor_visitor>, ast_tools {
 
     dtor_visitor(CompilerInstance& CI) : ast_tools(CI) {}
 
-    bool VisitCXXRecordDecl(CXXRecordDecl* R) { return true; }
-
-    // bool VisitCXXDestructorDecl(CXXDestructorDecl* D) {
-    //     // Skip deleted destructors
-    //     if (D->isDeleted()) {
-    //         return true;
-    //     }
-
-    //     // Check if destructor is non-trivial
-    //     if (D->getParent()->hasTrivialDestructor()) {
-    //         return true;
-    //     }
-
-    //     if (D->isCanonicalDecl()) {
-    //         dtors.insert(D);
-    //     }
-
-    //     return true;
-    // }
-
+    /// Rewriting happens directly in the visit. The traversal subsequently
+    /// descends into the freshly injected body, which is harmless: the
+    /// payload contains no CXXDestructorDecl.
     bool VisitCXXDestructorDecl(CXXDestructorDecl* dtor) {
-        dtors.insert(dtor);
+        maybe_perform_rewrite(dtor);
         return true;
     }
 
     void maybe_perform_rewrite(CXXDestructorDecl* dtor) {
+        if (rewritten.contains(dtor)) {
+            return;
+        }
+
         // Skip deleted destructors
         if (dtor->isDeleted()) {
             return;
@@ -86,10 +93,21 @@ struct dtor_visitor : public RecursiveASTVisitor<dtor_visitor>, ast_tools {
         }
 
         bool has_body    = dtor->doesThisDeclarationHaveABody();
-        bool is_implicit = dtor->isImplicit();
+        bool is_implicit = dtor->isImplicit() || dtor->isDefaulted();
+
+        // Implicit and defaulted destructors that Sema has not yet given a
+        // body are deferred to the sweep pass: injecting a body eagerly would
+        // conflict with Sema's own lazy definition. Once a body exists, eager
+        // rewriting is safe — and necessary for an out-of-line `= default`
+        // definition, which has external linkage and is emitted eagerly by
+        // CodeGen.
+        if (is_implicit && !has_body && !allow_implicit) {
+            return;
+        }
 
         if (has_body || is_implicit) {
             rewrite_dtor(dtor);
+            rewritten.insert(dtor);
         }
     }
 
@@ -159,12 +177,6 @@ struct dtor_visitor : public RecursiveASTVisitor<dtor_visitor>, ast_tools {
             if (print_dtor_ast) {
                 dtor->dumpColor();
             }
-        }
-    }
-
-    void rewrite_dtors() {
-        for (auto dtor : dtors) {
-            maybe_perform_rewrite(dtor);
         }
     }
 
