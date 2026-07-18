@@ -1,0 +1,13 @@
+# Global destroyed at exit; gh-1 reports global tracking broken, but this
+# case passes on macOS (the exit-time destructor chain is captured fine), so
+# the xfail is scoped to Linux until verified there.
+
+[case]
+xfail = "gh-1"
+xfail_platforms = ["linux"]
+
+[[types]]
+type = "GlobalOwner"
+size = 24
+objects = 1
+bytes = 3000

@@ -1,0 +1,12 @@
+# Smart-pointer dtor chain owns the pointee block plus its heap memory.
+
+[[types]]
+type = "Owner"
+size = 24
+objects = 1
+bytes = 2500
+
+[[types]]
+type = "std::unique_ptr<Owner*"
+objects = 1
+bytes = 2524

@@ -1,0 +1,20 @@
+# Lambda closure type: pattern-matched name, unnamed fields selected by offset.
+
+[[types]]
+type = "(lambda at *"
+size = 72
+objects = 1
+bytes = 6000
+
+  [[types.fields]]
+  offset = 0
+  size = 24
+  bytes = 1000
+
+  [[types.fields]]
+  offset = 24
+  bytes = 2000
+
+  [[types.fields]]
+  offset = 48
+  bytes = 3000

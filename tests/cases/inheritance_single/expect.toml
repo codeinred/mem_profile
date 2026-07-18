@@ -1,0 +1,29 @@
+# Single inheritance: base subobject attribution at offset 0.
+
+[[types]]
+type = "SDerived"
+size = 48
+objects = 1
+bytes = 4600
+
+  [[types.bases]]
+  type = "SBase"
+  offset = 0
+  size = 24
+  bytes = 1200
+
+  [[types.fields]]
+  name = "dv"
+  offset = 24
+  bytes = 3400
+
+[[types]]
+type = "SBase"
+size = 24
+objects = 1
+bytes = 1200
+
+  [[types.fields]]
+  name = "bv"
+  offset = 0
+  bytes = 1200

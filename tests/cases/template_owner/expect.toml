@@ -1,0 +1,23 @@
+# Per-instantiation attribution for a user class template.
+
+[[types]]
+type = "Holder<int>"
+size = 24
+objects = 1
+bytes = 4000
+
+  [[types.fields]]
+  name = "data"
+  offset = 0
+  bytes = 4000
+
+[[types]]
+type = "Holder<double>"
+size = 24
+objects = 1
+bytes = 6000
+
+  [[types.fields]]
+  name = "data"
+  offset = 0
+  bytes = 6000

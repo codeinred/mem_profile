@@ -1,0 +1,16 @@
+# Baseline: plain user types, inline dtors, new[]/delete[].
+
+[totals]
+typed_free_bytes = { min = 5000 }
+
+[[types]]
+type = "Foo"
+size = 8
+objects = 1
+bytes = 4000
+
+[[types]]
+type = "Bar"
+size = 8
+objects = 1
+bytes = 1000

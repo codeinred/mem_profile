@@ -1,0 +1,16 @@
+# Implicit templated dtor of std::array; attribution through its c-array field.
+
+[[types]]
+type = "std::array<std::vector<std::byte>,*"
+size = 72
+objects = 1
+bytes = 4100
+
+  [[types.fields]]
+  offset = 0
+  size = 72
+  bytes = 4100
+
+[[types]]
+type = "std::vector<std::byte>"
+bytes = 4100

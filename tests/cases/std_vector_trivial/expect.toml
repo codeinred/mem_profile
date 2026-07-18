@@ -1,0 +1,7 @@
+# Container instrumentation: exact buffer bytes for vector<int>.
+
+[[types]]
+type = "std::vector<int>"
+size = 24
+objects = 1
+bytes = 10000

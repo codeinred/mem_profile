@@ -1,0 +1,11 @@
+# Dtor defined in a second TU; fails per gh-2 (same signature as
+# out_of_line_dtor: the member vector appears in chains, SplitTu does not).
+
+[case]
+xfail = "gh-2"
+
+[[types]]
+type = "SplitTu"
+size = 24
+objects = 1
+bytes = 1500

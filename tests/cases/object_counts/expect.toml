@@ -1,0 +1,20 @@
+# Five distinct destructor invocations of one type; exact total bytes.
+
+[totals]
+typed_free_bytes = { min = 1500 }
+
+[[types]]
+type = "Counted"
+size = 24
+objects = 5
+bytes = 1500
+
+  [[types.fields]]
+  name = "v"
+  offset = 0
+  size = 24
+  bytes = 1500
+
+[[types]]
+type = "std::vector<std::byte>"
+bytes = 1500

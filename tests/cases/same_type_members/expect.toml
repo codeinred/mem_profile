@@ -1,0 +1,25 @@
+# Same-typed members: attribution must land on the right offset.
+
+[[types]]
+type = "Trio"
+size = 72
+objects = 1
+bytes = 6000
+
+  [[types.fields]]
+  name = "a"
+  offset = 0
+  size = 24
+  bytes = 1000
+
+  [[types.fields]]
+  name = "b"
+  offset = 24
+  size = 24
+  bytes = 2000
+
+  [[types.fields]]
+  name = "c"
+  offset = 48
+  size = 24
+  bytes = 3000

@@ -1,0 +1,19 @@
+# C allocation path: malloc in ctor, free in dtor.
+#
+# Discovered by this suite: on macOS, plain DYLD_INSERT_LIBRARIES does not
+# interpose the C malloc/free for the application (two-level namespace binds
+# them to libSystem; only the weak C++ operators are coalesced). Needs a
+# __DATA,__interpose table in the runtime.
+
+[case]
+xfail = "macos-malloc-interpose"
+xfail_platforms = ["darwin"]
+
+[totals]
+typed_free_bytes = { min = 3700 }
+
+[[types]]
+type = "CBuf"
+size = 8
+objects = 2
+bytes = 3700

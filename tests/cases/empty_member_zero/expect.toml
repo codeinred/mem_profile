@@ -1,0 +1,19 @@
+# A member that never allocates must attribute exactly zero bytes.
+
+[[types]]
+type = "PairOfVecs"
+size = 48
+objects = 1
+bytes = 4000
+
+  [[types.fields]]
+  name = "active"
+  offset = 0
+  size = 24
+  bytes = 4000
+
+  [[types.fields]]
+  name = "empty_one"
+  offset = 24
+  size = 24
+  bytes = 0

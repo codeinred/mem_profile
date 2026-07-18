@@ -117,5 +117,9 @@ gen_test_files: build_example
 run_example example: build_example
     examples/build/{{example}}
 
+# Run the end-to-end semantic test suite (see tests/CASES.md)
+test *args: build
+    python3 tests/run.py {{args}}
+
 clean:
     rm -rf build install examples/build

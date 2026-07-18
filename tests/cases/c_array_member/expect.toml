@@ -1,0 +1,18 @@
+# Attribution through a c-array field of an implicit-dtor aggregate.
+
+[[types]]
+type = "array3"
+size = 72
+objects = 1
+bytes = 1110
+
+  [[types.fields]]
+  name = "elems"
+  offset = 0
+  size = 72
+  bytes = 1110
+
+[[types]]
+type = "std::vector<std::byte>"
+objects = 3
+bytes = 1110

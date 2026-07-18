@@ -1,0 +1,18 @@
+# Owning elements inside a vector: bytes chain through the container.
+
+[[types]]
+type = "Elem"
+size = 24
+objects = 4
+bytes = 4000
+
+  [[types.fields]]
+  name = "v"
+  offset = 0
+  bytes = 4000
+
+[[types]]
+type = "std::vector<Elem>"
+size = 24
+objects = 1
+bytes = 4096

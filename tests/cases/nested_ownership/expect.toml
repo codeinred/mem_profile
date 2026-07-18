@@ -1,0 +1,34 @@
+# Outer{ pad; Inner{ vector } } — transitive attribution through both levels.
+
+[[types]]
+type = "Outer"
+size = 32
+objects = 1
+bytes = 2000
+
+  [[types.fields]]
+  name = "pad"
+  offset = 0
+  size = 8
+  bytes = 0
+
+  [[types.fields]]
+  name = "inner"
+  offset = 8
+  size = 24
+  bytes = 2000
+
+[[types]]
+type = "Inner"
+size = 24
+objects = 1
+bytes = 2000
+
+  [[types.fields]]
+  name = "data"
+  offset = 0
+  bytes = 2000
+
+[[types]]
+type = "std::vector<std::byte>"
+bytes = 2000

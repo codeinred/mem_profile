@@ -1,0 +1,15 @@
+# Heap string attributed to the string type; SSO strings allocate nothing.
+# gh-3: std::string is not instrumented properly on macOS.
+
+[case]
+xfail = "gh-3"
+xfail_platforms = ["darwin"]
+
+[totals]
+typed_free_bytes = { min = 5000 }
+
+# libstdc++ spells it std::basic_string<char>, libc++ std::string.
+[[types]]
+type = "std::*string*"
+objects = 1
+bytes = { min = 5000, max = 5200 }

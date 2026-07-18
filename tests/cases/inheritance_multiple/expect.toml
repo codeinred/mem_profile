@@ -1,0 +1,34 @@
+# Multiple inheritance: second base at nonzero offset, per-base attribution.
+
+[[types]]
+type = "MD"
+size = 72
+objects = 1
+bytes = 6600
+
+  [[types.bases]]
+  type = "MA"
+  offset = 0
+  size = 24
+  bytes = 1100
+
+  [[types.bases]]
+  type = "MB"
+  offset = 24
+  size = 24
+  bytes = 2200
+
+  [[types.fields]]
+  name = "dv"
+  offset = 48
+  bytes = 3300
+
+[[types]]
+type = "MA"
+objects = 1
+bytes = 1100
+
+[[types]]
+type = "MB"
+objects = 1
+bytes = 2200

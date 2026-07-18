@@ -1,0 +1,37 @@
+# Exact field offsets/sizes in the metadata table, exact per-field bytes.
+
+[[types]]
+type = "Layout"
+size = 64
+objects = 1
+bytes = 8000
+
+  [[types.fields]]
+  name = "a"
+  offset = 0
+  size = 8
+  bytes = 0
+
+  [[types.fields]]
+  name = "v1"
+  offset = 8
+  size = 24
+  bytes = 3000
+
+  [[types.fields]]
+  name = "b"
+  offset = 32
+  size = 4
+  bytes = 0
+
+  [[types.fields]]
+  name = "c"
+  offset = 36
+  size = 4
+  bytes = 0
+
+  [[types.fields]]
+  name = "v2"
+  offset = 40
+  size = 24
+  bytes = 5000

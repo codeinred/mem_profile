@@ -1,0 +1,18 @@
+# Out-of-line dtor definition (same TU).
+#
+# Fails per gh-2: the destructor's out-of-line definition is not instrumented
+# (its member vector shows up in chains, but OutOfLine itself never does).
+
+[case]
+xfail = "gh-2"
+
+[[types]]
+type = "OutOfLine"
+size = 24
+objects = 1
+bytes = 2000
+
+  [[types.fields]]
+  name = "v"
+  offset = 0
+  bytes = 2000

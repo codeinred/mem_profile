@@ -1,0 +1,14 @@
+# Both alternatives of a variant attribute through the variant type.
+
+[[types]]
+type = "std::variant<*"
+objects = 2
+bytes = 4700
+
+[[types]]
+type = "std::vector<std::byte>"
+bytes = 1500
+
+[[types]]
+type = "std::vector<double>"
+bytes = 3200
