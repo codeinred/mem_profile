@@ -1,0 +1,18 @@
+# Over-aligned new/delete: attribution through the aligned allocation path.
+# (The AlignedOwner block itself is freed by aligned operator delete outside
+# any instrumented destructor, so it is untyped by design.)
+
+[totals]
+typed_free_bytes = { min = 4700 }
+
+[[types]]
+type = "AlignedOwner"
+size = 128
+objects = 1
+bytes = 4700
+
+  [[types.fields]]
+  name = "v"
+  offset = 0
+  size = 24
+  bytes = 4700
