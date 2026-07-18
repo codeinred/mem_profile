@@ -136,6 +136,7 @@ mp_add_library(
         mp::mp_error
         fmt::fmt
         mp::clang_core
+        ankerl::unordered_dense
 )
 
 mp_add_library(
