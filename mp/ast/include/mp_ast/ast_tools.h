@@ -10,6 +10,7 @@
 #include <clang/Frontend/FrontendPluginRegistry.h>
 #include <clang/Rewrite/Core/Rewriter.h>
 #include <clang/Sema/Sema.h>
+#include <llvm/Config/llvm-config.h>
 #include <llvm/Support/raw_ostream.h>
 #include <span>
 
@@ -41,6 +42,17 @@ struct ast_tools {
         // Ensures that tag keywords such as 'struct' or 'class' are suppressed
         // when printing the type name
         pol.adjustForCPlusPlus();
+    }
+
+    /// Get the QualType for a tag declaration (class, struct, union).
+    /// LLVM 22 removed the getTypeDeclType overload for TagDecl in favor of
+    /// getCanonicalTagType.
+    QualType tag_decl_type(TagDecl const* decl) {
+#if LLVM_VERSION_MAJOR >= 22
+        return ctx.getCanonicalTagType(decl);
+#else
+        return ctx.getTypeDeclType(decl);
+#endif
     }
 
     /// Prepends the given statement to a CompoundStatement, returning
@@ -470,7 +482,7 @@ struct ast_tools {
             throw std::runtime_error("Complete definition required");
         }
 
-        auto mp_type_data_qual_type = ctx.getTypeDeclType(mp_type_data_decl);
+        auto mp_type_data_qual_type = tag_decl_type(mp_type_data_decl);
         auto type_data_var
             = declare_static_var(loc, method_ctx, "__MP_TYPE_DATA", mp_type_data_qual_type);
         type_data_var->setConstexpr(true);

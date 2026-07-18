@@ -97,7 +97,7 @@ struct dtor_visitor : public RecursiveASTVisitor<dtor_visitor>, ast_tools {
 
         // Get the class corresponding to this dtor, and the type of that class
         CXXRecordDecl* record = dtor->getParent();
-        QualType       type   = ctx.getTypeDeclType(record);
+        QualType       type   = tag_decl_type(record);
 
         // Find the hook called by the payload
         FunctionDecl* hook = find_function_decl("save_state");
